@@ -1,0 +1,30 @@
+{
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.autoImportCompletions": true,
+
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "charliermarsh.ruff",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.ruff": "explicit",
+    "source.organizeImports.ruff": "explicit"
+  },
+  "editor.rulers": [100],
+
+  "[yaml]": { "editor.defaultFormatter": "redhat.vscode-yaml" },
+  "[json]": { "editor.defaultFormatter": "vscode.json-language-features" },
+
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.egg-info": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true
+  },
+
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true
+}

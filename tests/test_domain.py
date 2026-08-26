@@ -8,6 +8,7 @@ propensities, and mis-set AFA ceilings.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -104,8 +105,8 @@ class TestImmutability:
             )
 
 
-def _case(**overrides: object) -> RecoveryCase:
-    base: dict[str, object] = {
+def _case(**overrides: Any) -> RecoveryCase:
+    base: dict[str, Any] = {
         "case_id": "case_1",
         "case_type": CaseType.PAYMENT_FAILURE,
         "merchant_id": "mrc_1",
@@ -114,7 +115,7 @@ def _case(**overrides: object) -> RecoveryCase:
         "created_at": NOW,
     }
     base.update(overrides)
-    return RecoveryCase(**base)  # type: ignore[arg-type]
+    return RecoveryCase(**base)
 
 
 class TestBudgets:

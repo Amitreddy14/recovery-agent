@@ -2,7 +2,7 @@
 name = "recovery-agent"
 version = "0.1.0"
 description = "Compliance-gated revenue recovery agent for failed payments and recurring mandates"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 dependencies = [
     "pydantic>=2.7",
@@ -47,13 +47,13 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_unreachable = true
 plugins = ["pydantic.mypy"]

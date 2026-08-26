@@ -109,3 +109,50 @@ cannot reach the evaluation stage.
 > this is not reconstructed after the fact.
 
 _(none yet)_
+
+
+### INC-001 — mypy silently skipped the entire domain package
+
+**Phase:** 1
+**Symptom:** Editor reported `import-untyped` on `recovery.domain`; strict
+mypy was passing because it was analyzing nothing.
+**Cause:** Package shipped without a PEP 561 `py.typed` marker, so mypy
+treated our own installed package as an untyped third-party library.
+**Fix:** Added `src/recovery/py.typed` and declared it in
+`[tool.setuptools.package-data]`.
+**Changed as a result:** CI now runs `mypy src tests` rather than `mypy src`,
+so type coverage of the test suite is enforced too — that is where the gap
+surfaced.
+
+
+### INC-002 — mypy aborted on numpy stubs before checking any project code
+
+**Phase:** 1
+**Symptom:** `mypy src tests` failed with a syntax error inside
+`numpy/__init__.pyi`, reporting "errors prevented further checking". Zero
+project files were analysed.
+**Cause:** `[tool.mypy] python_version` was pinned to 3.11 while the venv ran
+3.12. Numpy's stubs use PEP 695 `type` statements, which mypy rejects as
+invalid syntax when targeting 3.11.
+**Fix:** Set `python_version = "3.12"` and `requires-python = ">=3.12,<3.14"`
+so the declared floor, the venv and the type-check target agree.
+**Changed as a result:** Version is now declared in exactly one consistent
+place. A mismatch between the runtime and the type-check target silently
+disables type checking, which is worse than a loud failure.
+
+
+
+### INC-003 — Pylance and mypy disagreed on **dict unpacking
+
+**Phase:** 1
+**Symptom:** 16 `reportArgumentType` errors in the editor on
+`RecoveryCase(**base)`; mypy reported success on the same line.
+**Cause:** Mypy's pydantic plugin models the generated `__init__` and does not
+narrow through `**dict[str, object]`; Pylance has no such plugin and checks the
+unpack strictly. Two checkers, two rulesets, one line.
+**Fix:** Typed the test helper's overrides as `Any`, which is accurate — the
+helper exists to accept arbitrary field overrides.
+**Changed as a result:** mypy is the single source of truth for type errors
+because it is what CI runs; Pylance stays in `basic` mode as an assist. Any
+future disagreement gets resolved by changing the code, not by silencing one
+of the two.
