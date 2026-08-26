@@ -1,0 +1,106 @@
+[project]
+name = "recovery-agent"
+version = "0.1.0"
+description = "Compliance-gated revenue recovery agent for failed payments and recurring mandates"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.3",
+    "scikit-uplift>=0.5.1",
+    "sqlalchemy>=2.0",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "typer>=0.12",
+    "rich>=13.7",
+    "structlog>=24.1",
+    "razorpay>=1.4",
+    "anthropic>=0.34",
+    "tenacity>=8.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "import-linter>=2.0",
+    "types-PyYAML",
+]
+
+[project.scripts]
+recovery = "recovery.cli:app"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["lightgbm.*", "sklift.*", "razorpay.*", "sklearn.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+# ---------------------------------------------------------------------------
+# Evaluation integrity contract.
+#
+# `world.oracle` holds the ground-truth potential outcomes Y(a) for every
+# action. If any diagnosis / uplift / policy / execution module could import
+# it, every metric this project reports would be worthless.
+#
+# This is enforced in CI, not by convention. Breaking it fails the build.
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "recovery"
+
+[[tool.importlinter.contracts]]
+name = "Decision-making code cannot see ground-truth outcomes"
+type = "forbidden"
+source_modules = [
+    "recovery.diagnose",
+    "recovery.uplift",
+    "recovery.policy",
+    "recovery.compliance",
+    "recovery.execute",
+    "recovery.api",
+]
+forbidden_modules = ["recovery.world.oracle"]
+
+[[tool.importlinter.contracts]]
+name = "Domain layer depends on nothing internal"
+type = "forbidden"
+source_modules = ["recovery.domain"]
+forbidden_modules = [
+    "recovery.world",
+    "recovery.diagnose",
+    "recovery.uplift",
+    "recovery.policy",
+    "recovery.execute",
+    "recovery.evaluate",
+    "recovery.api",
+]

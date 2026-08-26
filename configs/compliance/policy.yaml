@@ -1,0 +1,142 @@
+# =============================================================================
+# Compliance rules, expressed as data.
+#
+# Rules live here rather than in Python so that (a) an auditor can read them
+# without reading code, (b) they can be diffed and versioned independently of
+# the agent, and (c) a rule change cannot silently alter agent behaviour
+# without appearing in this file's git history.
+#
+# Sources are cited per rule. Where a rule is our own operating policy rather
+# than a regulatory requirement, it is marked `basis: operating_policy`.
+# =============================================================================
+
+version: "2026.08"
+
+rules:
+
+  # --- RBI Digital Payments E-mandate Framework, 2026 -----------------------
+
+  - id: RBI_PRE_DEBIT_NOTIFICATION
+    basis: regulation
+    source: "RBI Digital Payments - E-mandate Framework, 2026 (issued 2026-04-21)"
+    description: >
+      A pre-transaction notification must reach the customer at least 24 hours
+      before any recurring debit, stating merchant name, amount, date/time of
+      debit, mandate reference and reason for debit, and offering an opt-out.
+    applies_to: [pre_debit_nudge, retry_scheduled]
+    params:
+      min_lead_hours: 24
+      required_fields:
+        - merchant_name
+        - amount
+        - debit_datetime
+        - mandate_reference
+        - debit_reason
+        - opt_out_instruction
+
+  - id: RBI_AFA_THRESHOLD
+    basis: regulation
+    source: "RBI Digital Payments - E-mandate Framework, 2026"
+    description: >
+      Recurring debits above the AFA-free ceiling require additional factor
+      authentication. The agent must never retry such a debit silently; it
+      routes to an authenticated flow instead.
+    applies_to: [retry_now, retry_scheduled, retry_alternate_rail]
+    params:
+      default_ceiling_paise: 1500000        # Rs 15,000
+      elevated_ceiling_paise: 10000000      # Rs 1,00,000
+      elevated_categories:
+        - insurance_premium
+        - mutual_fund
+        - credit_card_bill
+
+  - id: RBI_OPT_OUT_HONOURED
+    basis: regulation
+    source: "RBI Digital Payments - E-mandate Framework, 2026"
+    description: >
+      A customer opt-out for a specific transaction or the mandate is a hard
+      stop. No further debit attempt or contact on that case.
+    applies_to: [all]
+
+  # --- Contact conduct ------------------------------------------------------
+
+  - id: CONTACT_HOURS
+    basis: operating_policy
+    source: "Aligned with RBI fair practices expectations on recovery contact"
+    description: Customer contact is restricted to daytime hours, IST.
+    applies_to: [send_payment_link, pre_debit_nudge]
+    params:
+      timezone: Asia/Kolkata
+      earliest: "09:00"
+      latest: "19:00"
+      on_violation: defer   # not blocked outright — rescheduled
+
+  - id: DND_REGISTRY
+    basis: regulation
+    source: "TRAI TCCCPR, 2018 - commercial communication preferences"
+    description: >
+      Promotional contact to DND-registered numbers is blocked. Transactional
+      notifications required by the e-mandate framework are exempt.
+    applies_to: [send_payment_link]
+    params:
+      exempt_action_types: [pre_debit_nudge]
+
+  - id: CONTACT_FREQUENCY_CAP
+    basis: operating_policy
+    description: Ceiling on customer contacts, independent of case budget.
+    applies_to: [send_payment_link, pre_debit_nudge]
+    params:
+      max_per_case: 2
+      max_per_customer_7d: 3
+      max_per_customer_30d: 6
+      min_gap_hours: 48
+
+  # --- Hard stops -----------------------------------------------------------
+
+  - id: PROMISE_TO_PAY_ACTIVE
+    basis: operating_policy
+    description: >
+      Once a customer commits to a payment date, all contact stops until that
+      date passes. Chasing through a promise destroys goodwill and, in
+      collections contexts, invites complaint.
+    applies_to: [all]
+    params:
+      grace_hours: 24
+
+  - id: DISPUTE_RAISED
+    basis: operating_policy
+    description: An open dispute freezes all recovery activity on the case.
+    applies_to: [all]
+
+  - id: MANDATE_REVOKED
+    basis: regulation
+    source: "RBI Digital Payments - E-mandate Framework, 2026"
+    description: A revoked or expired mandate cannot be debited. Ever.
+    applies_to: [retry_now, retry_scheduled, retry_alternate_rail]
+
+  - id: ATTEMPT_BUDGET
+    basis: operating_policy
+    description: Per-case cap on debit attempts against the rail.
+    applies_to: [retry_now, retry_scheduled, retry_alternate_rail]
+    params:
+      max_per_case: 3
+      min_gap_minutes: 20
+
+# --- Economics used by the decision engine ----------------------------------
+# Intervention costs. Deliberately explicit: a policy that cannot price its own
+# actions cannot compute expected value, and will over-intervene.
+
+costs_paise:
+  no_action: 0
+  retry_now: 50            # gateway + reconciliation overhead
+  retry_scheduled: 50
+  retry_alternate_rail: 75
+  send_payment_link: 35    # SMS/WhatsApp unit economics
+  pre_debit_nudge: 20
+  escalate_human: 4000     # ~Rs 40 of agent time
+
+# Modelled cost of a mandate cancellation caused by over-contacting:
+# the remaining expected lifetime value of the mandate.
+sleeping_dog_penalty:
+  method: remaining_mandate_value
+  horizon_cycles: 12
