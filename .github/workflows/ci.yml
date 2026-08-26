@@ -12,14 +12,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
       - name: Install
         run: pip install -e ".[dev]"
       - name: Lint
         run: ruff check src tests
       - name: Type check
-        run: mypy src
+        run: mypy src tests
       - name: Evaluation integrity contracts
         run: lint-imports
       - name: Tests
