@@ -1,0 +1,74 @@
+{
+  "provenance": {
+    "source_name": "SYNTHETIC FIXTURE - not NPCI data",
+    "source_url": "https://example.invalid/fixture",
+    "reporting_period": "fixture",
+    "retrieved_on": "2026-08-26",
+    "retrieved_by": "test suite",
+    "notes": "Synthetic values used only to exercise the loader and calibrator in tests. Bank names are deliberately prefixed FIXTURE so this file can never be mistaken for published evidence.\n"
+  },
+  "issuers": [
+    {
+      "bank_name": "FIXTURE Bank A",
+      "volume_share": 0.41284403669724773,
+      "published_td_rate": 0.0065,
+      "published_bd_rate": 0.038,
+      "baseline_td_rate": 0.00580789277736411,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "FIXTURE Bank B",
+      "volume_share": 0.1926605504587156,
+      "published_td_rate": 0.018,
+      "published_bd_rate": 0.051,
+      "baseline_td_rate": 0.016083395383469843,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "FIXTURE Bank C",
+      "volume_share": 0.3256880733944954,
+      "published_td_rate": 0.0042,
+      "published_bd_rate": 0.0295,
+      "baseline_td_rate": 0.003752792256142963,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "FIXTURE Bank D",
+      "volume_share": 0.06880733944954129,
+      "published_td_rate": 0.024,
+      "published_bd_rate": 0.062,
+      "baseline_td_rate": 0.02144452717795979,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    }
+  ],
+  "td_reason_mix": {
+    "bank_downtime": 0.55,
+    "gateway_technical_error": 0.2,
+    "network_error": 0.15,
+    "payment_timeout": 0.1
+  },
+  "bd_reason_mix": {
+    "insufficient_funds": 0.42,
+    "invalid_otp": 0.18,
+    "payment_cancelled_by_user": 0.22,
+    "payment_limit_exceeded": 0.1,
+    "card_expired": 0.08
+  },
+  "mandate_bd_uplift_factor": 1.35,
+  "salary_window_bd_multiplier": 0.45,
+  "assumption_names": [
+    "BD_REASON_MIX",
+    "DEGRADATION_DURATION_HOURS_RANGE",
+    "DEGRADATION_EPISODE_RATE_PER_DAY",
+    "DEGRADATION_TD_MULTIPLIER_RANGE",
+    "MANDATE_BD_UPLIFT_FACTOR",
+    "SALARY_DAY_OF_MONTH",
+    "SALARY_WINDOW_BD_MULTIPLIER",
+    "SALARY_WINDOW_DAYS",
+    "TD_REASON_MIX"
+  ]
+}
