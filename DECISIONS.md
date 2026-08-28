@@ -161,6 +161,66 @@ published decline rates and the calibration claim is void.
 
 ---
 
+## ADR-0008 — Potential outcomes use one coupled draw per case
+
+**Date:** Phase 3
+**Status:** Accepted
+
+**Context.** For each case the world must produce Y(a) for every action,
+including the six not taken.
+
+**Decision.** One uniform draw `u ~ U(0,1)` per case, with
+`Y(a) = 1 iff u < p(a)`.
+
+**Reasoning.** Independent draws per action would make outcomes conditionally
+independent given the probabilities, which is wrong twice over. It breaks the
+realism — a customer who would pay under a weak intervention almost certainly
+pays under a stronger one — and it manufactures apparent treatment effects out
+of sampling noise, so an uplift model would appear to work on data containing
+no real heterogeneity. With the coupled draw, uplift is exactly `p(a) - p(0)`,
+including negative values, which is where sleeping dogs live.
+
+**Verification.** `test_coupled_draw_preserves_outcome_monotonicity`.
+
+---
+
+## ADR-0009 — Segments are read off outcomes, never used to generate them
+
+**Date:** Phase 3
+**Status:** Accepted
+
+**Decision.** `outcomes.py` computes p(a) from latent traits, failure reason
+and issuer state. `segments.py` then classifies a case by comparing those
+probabilities. Generation never consults a segment label.
+
+**Reasoning.** The direction of the arrow is the whole argument. If generation
+started from "make this one a sleeping dog", any uplift model fitted
+downstream would be recovering our labels rather than learning a causal
+effect, and every number in the submission would be circular. Reading labels
+off emergent probabilities means the model has to find structure we did not
+hand it.
+
+---
+
+## ADR-0010 — Human escalation is excluded from segmentation
+
+**Date:** Phase 3
+**Status:** Accepted
+
+**Context.** `ESCALATE_HUMAN` has roughly +0.29 mean uplift and lifts almost
+any case. Including it in segmentation classified every customer as
+persuadable and collapsed the segment structure to a single bucket.
+
+**Decision.** Segmentation considers only the automated action set.
+
+**Reasoning.** "Would an intervention change this outcome" is a question about
+the actions being targeted. Human escalation is not a targeting choice but an
+expensive fallback, priced by the decision engine rather than selected by the
+uplift model. Its cost is roughly 80x a payment link, so it is never the
+answer to "who should we contact".
+
+---
+
 ## Incidents
 
 > Running log of things that broke, what the symptom was, what the cause
@@ -255,4 +315,90 @@ exclusion rule is therefore stated as a signature rather than a name list —
 a technology provider reporting perfect approval and no declines is not an
 issuing bank. Patching the one row I had seen would have left the second in.
 
+### INC-007 — Two of the four segments were structurally impossible
 
+**Phase:** 3
+**Symptom:** `sure_thing` prevalence was exactly 0% across 6,000 generated
+cases. The uplift thesis rests on distinguishing four segments; with one
+absent, a third of the argument was untestable.
+
+**Time lost:** ~40 minutes across three distinct causes.
+
+**Cause:** three separate problems wearing one symptom.
+
+1. **Arithmetic ceiling.** `p(NO_ACTION) = intent * PASSIVE_RECOVERY[reason]`,
+   and the largest passive value was 0.55, while `CERTAINTY_THRESHOLD` was
+   0.65. No case could clear the bar under any parameter draw. Confirmed by
+   computing the maximum directly rather than by inspecting samples.
+2. **Escalation swamped the classifier.** With the ceiling raised, still zero:
+   `ESCALATE_HUMAN` lifts nearly every case above the persuasion threshold, so
+   high-baseline cases were classified persuadable rather than sure things.
+3. **The population was wrong.** With both fixed, still zero — and this one
+   was not a bug. In a *failed payment* population some action always beats
+   doing nothing, so sure things cannot exist there. They exist only before
+   the failure, among mandates that will succeed untouched.
+**Fix:**
+- Raised passive recovery for transient technical failures (bank downtime
+  0.55 → 0.74, network 0.52 → 0.71). The original values implied that most
+  customers hitting a transient error never retry unprompted, which is
+  wrong and flattered every intervention by removing the self-healing
+  population entirely.
+- Excluded `ESCALATE_HUMAN` from segmentation (ADR-0010).
+- Added the `UPCOMING_AT_RISK` population: mandates due to debit but not yet
+  failed, at 30% of the batch.
+Result: sure things 4.2%, lost causes 16.5%, persuadables 59.6%, sleeping
+dogs 14.6%.
+
+**Changed as a result:** The third cause was the valuable one, and it was not
+a defect. It is a real structural property — sure things are a pre-failure
+phenomenon — and it is now asserted by
+`test_sure_things_are_pre_failure_only`, which will fail if a future change
+lets them appear in the recovery population.
+
+It also strengthens the compliance-as-channel argument rather than
+weakening it. The RBI pre-debit notification fires on every recurring debit,
+including the ~89% that would have succeeded anyway. That is precisely a
+population of sure things, and it is exactly why targeting matters: a policy
+that cannot separate them from the at-risk minority spends its entire contact
+budget on customers who needed nothing.
+
+**Process note:** the first cause was found by computing the maximum
+achievable value analytically rather than by staring at generated samples.
+Worth repeating whenever a category has zero prevalence — check whether it is
+reachable at all before assuming the sampler is at fault.
+
+### INC-008 — A type fix was reported clean by a checker that never ran
+
+**Phase:** 3
+**Symptom:** mypy flagged `PaymentMethod(rng.choice([...]))` as passing a
+numpy scalar where a `str` was expected. A fix was applied and reported
+clean, but the identical error reappeared on the next run.
+
+**Time lost:** ~15 minutes, plus one wasted round trip.
+
+**Cause:** two failures stacked, and either alone would have been caught.
+
+1. The edit was a string replacement written against post-format text and
+   applied to a file that had not yet been formatted. The match failed
+   silently — the new `ONE_OFF_METHODS` constant was added, the call site was
+   left untouched. A failed replacement raises nothing.
+2. The verifying environment lacked numpy's type stubs, so mypy inferred
+   `Any` for the `rng.choice` return and reported no error at all. The green
+   result meant "not checked", not "correct".
+**Fix:** Index a module-level `ONE_OFF_METHODS` tuple with `rng.integers`.
+Verified by reading the changed line back from disk rather than by observing
+a later command exit zero.
+
+**Changed as a result:**
+- Edits are confirmed by re-reading the file, not by a subsequent command
+  succeeding. A silent no-op patch and a correct patch look identical from
+  the outside.
+- A checker's silence counts as evidence only when the checker can see the
+  types involved. A stub-less mypy run is indistinguishable from a passing
+  one, which makes it worse than no check.
+**Note on the frozen world:** batch output was byte-identical after the
+change, because `Generator.choice` delegates to `integers` when no `p` is
+supplied, so the random stream position was preserved. This was verified by
+regenerating and comparing, not assumed. Any change to how the generator
+draws randomness can otherwise shift every reported number with no visible
+error — which is a large part of what `v0.4-world-frozen` exists to protect.
