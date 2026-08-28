@@ -119,6 +119,12 @@ class PotentialOutcomes(BaseModel):
     mandate_cancelled: dict[ActionType, bool]
     uniform_draw: float = Field(ge=0.0, le=1.0)
     cancel_draw: float = Field(ge=0.0, le=1.0)
+    issuer_degraded_at_failure: bool = False
+    """Ground truth for scoring the Phase 4 detector.
+
+    Recorded, not generated: this reflects state the timeline had already
+    determined, so adding the field moves no draw and shifts no stream
+    position. Verified by regenerating and comparing (INC-008)."""
 
     def uplift(self, action: ActionType) -> float:
         """Causal effect of `action` relative to doing nothing."""
@@ -313,4 +319,5 @@ def compute_potential_outcomes(
         mandate_cancelled=cancelled,
         uniform_draw=u,
         cancel_draw=v,
+        issuer_degraded_at_failure=degraded_now,
     )

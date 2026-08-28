@@ -1,31 +1,29 @@
-"""Observable case features and the historical logging policy.
+"""The historical logging policy.
 
-`CaseFeatures` is everything the policy is allowed to see. It is serialised
-to a different file from the oracle, so the separation is physical as well as
-enforced by CI.
+Imitates what a merchant does today - retry almost everything - with
+epsilon-greedy exploration and a randomised holdout. Both exist so the logged
+data supports unbiased off-policy evaluation: without recorded propensities an
+IPS or doubly-robust estimator is undefined, which is why
+`Decision.propensity` is a required field (ADR-0005).
 
-The logging policy imitates what a merchant does today - retry almost
-everything - with epsilon-greedy exploration and a randomised holdout. Both
-exist so the logged data supports unbiased off-policy evaluation. Without
-recorded propensities, an IPS or doubly-robust estimator is undefined, which
-is why `Decision.propensity` is a required field (ADR-0005).
+The observable schemas themselves live in `recovery.domain.observations`.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
 
-from recovery.domain.enums import (
-    ActionType,
-    CaseType,
-    DeclineClass,
-    FailureReason,
-    MandateCategory,
-    PaymentMethod,
-)
+from recovery.domain.enums import ActionType, CaseType, FailureReason
+from recovery.domain.observations import CaseFeatures, LoggedDecision
+
+__all__ = [
+    "EXPLORATION_EPSILON",
+    "HOLDOUT_FRACTION",
+    "LOGGABLE_ACTIONS",
+    "CaseFeatures",
+    "LoggedDecision",
+    "log_action",
+]
 
 EXPLORATION_EPSILON = 0.15
 """Fraction of non-holdout cases where the logging policy acts at random."""
@@ -42,70 +40,6 @@ LOGGABLE_ACTIONS: tuple[ActionType, ...] = (
     ActionType.SEND_PAYMENT_LINK,
     ActionType.PRE_DEBIT_NUDGE,
 )
-
-
-class CaseFeatures(BaseModel):
-    """Everything the policy may observe. No latent traits, no outcomes."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    case_id: str
-    case_type: CaseType
-    created_at: datetime
-
-    amount_paise: int = Field(gt=0)
-    method: PaymentMethod
-    issuer: str
-    reason: FailureReason
-    decline_class: DeclineClass
-
-    customer_id: str
-    tenure_days: int = Field(ge=0)
-    prior_payment_count: int = Field(ge=0)
-    prior_failure_count: int = Field(ge=0)
-    prior_recovery_count: int = Field(ge=0)
-    contacts_last_30d: int = Field(ge=0)
-    dnd_registered: bool
-
-    hour_of_day: int = Field(ge=0, le=23)
-    day_of_month: int = Field(ge=1, le=31)
-    days_since_salary: int = Field(ge=0)
-
-    mandate_category: MandateCategory | None = None
-    consecutive_mandate_failures: int = Field(default=0, ge=0)
-
-    issuer_failures_last_hour: int = Field(default=0, ge=0)
-    issuer_volume_last_hour: int = Field(default=0, ge=0)
-
-    @property
-    def prior_failure_rate(self) -> float:
-        total = self.prior_payment_count + self.prior_failure_count
-        return self.prior_failure_count / total if total else 0.0
-
-    @property
-    def issuer_failure_rate_last_hour(self) -> float:
-        """The observable proxy for issuer degradation.
-
-        The policy must infer a bad moment from this rather than being told.
-        It is noisy by construction - a low-volume issuer produces a very
-        unreliable estimate, which is exactly the difficulty a production
-        system faces.
-        """
-        if self.issuer_volume_last_hour == 0:
-            return 0.0
-        return self.issuer_failures_last_hour / self.issuer_volume_last_hour
-
-
-class LoggedDecision(BaseModel):
-    """What the historical policy did, and with what probability."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    case_id: str
-    action: ActionType
-    propensity: float = Field(gt=0.0, le=1.0)
-    is_holdout: bool
-    policy_name: str
 
 
 def _naive_preference(features: CaseFeatures) -> ActionType:
