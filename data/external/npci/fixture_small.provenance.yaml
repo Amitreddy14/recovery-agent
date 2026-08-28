@@ -1,0 +1,9 @@
+source_name: "SYNTHETIC FIXTURE - not NPCI data"
+source_url: "https://example.invalid/fixture"
+reporting_period: "fixture"
+retrieved_on: "2026-08-26"
+retrieved_by: "test suite"
+notes: >
+  Synthetic values used only to exercise the loader and calibrator in tests.
+  Bank names are deliberately prefixed FIXTURE so this file can never be
+  mistaken for published evidence.

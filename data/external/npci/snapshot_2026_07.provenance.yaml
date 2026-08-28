@@ -1,0 +1,29 @@
+source_name: "NPCI UPI Ecosystem Statistics - Top 50 Member Performance (Remitter)"
+source_url: "https://www.npci.org.in/what-we-do/upi/upi-ecosystem-statistics"
+reporting_period: "2026-07"
+retrieved_on: "2026-08-26"
+retrieved_by: "Amit"
+notes: >
+  Source file: Ecosystem-Statistics-UPI-Top-50-member-performance-2026-Jul-Remitter.xlsx,
+  sheet Sheet20. Remitter (payer-side) table, which is the correct side for
+  issuer-decline modelling.
+
+  All 48 issuing banks retained - no volume cutoff applied, so there is no
+  threshold to justify. Volume-weighted aggregates are stable across cutoffs
+  (TD 0.374%-0.402% from top-15 through full table), so the choice does not
+  drive downstream results.
+
+  Two non-bank entities excluded: Tri O Tech Solutions Private Limited and
+  One Mobikwik Systems Limited. Both report 100.00% approved with zero BD and
+  zero TD, which is characteristic of a technology provider rather than an
+  issuing bank. Together they are 231.70 Mn of 25,897.80 Mn (0.89%). Including
+  them would grant a non-issuer a volume share and a perfect approval rate,
+  biasing the world's aggregates upward.
+
+  Percentages in the source are stored as text ("90.29%") and were divided by
+  100 to rates. Every row satisfies approved + BD + TD = 1.0 within NPCI's
+  two-decimal rounding.
+
+  AEPS BD/TD file deliberately not used: Aadhaar-enabled banking-correspondent
+  transactions are a different rail with materially different decline
+  behaviour.

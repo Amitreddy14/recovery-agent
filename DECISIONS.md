@@ -102,6 +102,65 @@ cannot reach the evaluation stage.
 
 ---
 
+## ADR-0006 — Calibration is split into Tier 1 (empirical) and Tier 2 (assumed)
+
+**Date:** Phase 2
+**Status:** Accepted
+
+**Context.** NPCI publishes per-bank Technical Decline and Business Decline
+rates monthly, but not the reason-level composition inside those buckets, and
+not the time-clustering of failures. The simulator needs both.
+
+**Decision.** Parameters are split by epistemic status.
+
+- **Tier 1** lives in the ingested snapshot: per-issuer TD/BD rates and volume
+  shares. Sourced, versioned, and not overridable — `calibrate()` deliberately
+  exposes no keyword that can alter a published figure, and a test asserts this.
+- **Tier 2** lives in `calibration/assumptions.py`: reason mixes, degradation
+  dynamics, salary-window effects. Every entry is registered in
+  `ASSUMPTION_REGISTRY`, and a test fails if an assumption is added without
+  registering it.
+
+**Reasoning.** The credibility of every rupee figure downstream rests on a
+reviewer being able to see exactly which numbers are evidence and which are
+modelling choices. Mixing them in one config would make the whole set look
+invented. Isolating Tier 2 also gives Phase 9's robustness sweep a precise
+target: perturb the registry, hold the snapshot fixed.
+
+**Rejected alternative.** One flat generator config. Faster, but indefensible
+under questioning.
+
+---
+
+## ADR-0007 — Published TD is treated as a mixture, not a constant rate
+
+**Date:** Phase 2
+**Status:** Accepted
+
+**Context.** NPCI's monthly per-bank TD is an average that already contains
+degradation episodes. Applying it uniformly in time would produce a world with
+no clustering — and the "retry timing against issuer health" thesis would be
+untestable by construction, because there would never be a bad moment to avoid.
+
+**Decision.** Calibration solves for a *baseline* rate below the published
+figure, such that baseline plus sampled degradation episodes reproduces the
+published mean:
+
+    baseline = published / (1 - f + m * f)
+
+where `f` is the long-run degraded time fraction and `m` the TD multiplier
+while degraded.
+
+**Reasoning.** The simulator must match published aggregates *and* exhibit the
+temporal structure a recovery policy has to cope with. Doing only the first is
+a world too easy to win in; doing only the second abandons the calibration.
+
+**Verification.** `test_round_trips_to_published` asserts the inversion is
+exact for every issuer. If it breaks, the simulator no longer reproduces
+published decline rates and the calibration claim is void.
+
+---
+
 ## Incidents
 
 > Running log of things that broke, what the symptom was, what the cause
@@ -156,3 +215,44 @@ helper exists to accept arbitrary field overrides.
 because it is what CI runs; Pylance stays in `basic` mode as an assist. Any
 future disagreement gets resolved by changing the code, not by silencing one
 of the two.
+
+
+### INC-004 — CI skipped every quality gate after a Python version mismatch
+
+**Phase:** 1
+**Symptom:** GitHub Actions run #2 failed at `Install`. Lint, type check,
+import contracts and tests all reported 0s and did not execute.
+**Cause:** `requires-python` was raised to `>=3.12` (INC-002) but the CI
+workflow still requested 3.11 via `setup-python`. Pip refused to install the
+package, and the remaining steps never ran.
+**Fix:** Pinned the runner to 3.12 and updated the type-check step to
+`mypy src tests` to match local invocation.
+**Changed as a result:** The Python version is now stated in two places that
+must agree — `pyproject.toml` and the CI workflow. Noted as a future
+consolidation candidate. This also confirmed that a failed install skips
+rather than silently passes downstream gates, which is the behaviour we want.
+
+### INC-005 — Two assumptions were invisible to the robustness sweep
+
+**Phase:** 2
+**Symptom:** `test_registry_covers_every_assumption` failed on first run,
+reporting `SALARY_DAY_OF_MONTH` and `SALARY_WINDOW_DAYS` as unregistered.
+**Time lost:** ~0 (caught immediately by the test that was written for it).
+**Cause:** Both were added to `assumptions.py` without a corresponding entry in
+`ASSUMPTION_REGISTRY`. Phase 9's sweep iterates the registry, so both would
+have been silently held fixed while being reported as swept.
+**Fix:** Registered both.
+**Changed as a result:** Nothing structural — the guard already existed and
+worked. Recording it because it demonstrates why the registry test is worth
+its cost: an unswept assumption reported as swept is a false claim, and it
+would have been invisible in the results.
+
+
+**Follow-up:** the full 50-row file contained a *second* non-bank entity
+(One Mobikwik Systems Limited) not visible in the sampled screenshot, with
+the same signature as the first: 100.00% approved, zero BD, zero TD. The
+exclusion rule is therefore stated as a signature rather than a name list —
+a technology provider reporting perfect approval and no declines is not an
+issuing bank. Patching the one row I had seen would have left the second in.
+
+
