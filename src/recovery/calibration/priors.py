@@ -24,16 +24,47 @@ NPCI_BD_TARGET: Final[float] = 0.05
 """Business Decline target: <5% of transactions. User-side causes."""
 
 # --- System-wide observed rates --------------------------------------------
-# System-wide TD fell from roughly 8-10% in 2016 to approximately 0.7-0.8%
-# by 2025. Used as a sanity bound on the volume-weighted mean of any
-# calibrated issuer set.
+# Bands are wide on purpose. They exist to catch a mis-parsed column or a
+# percent/rate confusion, not to encode a forecast. The tight check is the
+# per-row sum-to-100 invariant in `npci.py`, which is a property of the
+# source data rather than an assumption of ours.
+#
+# Observed on the NPCI Top 50 Remitter table for 2026-07 (top 20 by volume,
+# 23,152.76 Mn transactions): TD 0.376%, BD 10.884%, approved 88.737%.
 
-SYSTEM_TD_RATE_RANGE: Final[tuple[float, float]] = (0.005, 0.015)
-"""Plausible band for volume-weighted system TD. Calibration fails outside."""
+SYSTEM_TD_RATE_RANGE: Final[tuple[float, float]] = (0.001, 0.020)
+"""Plausible band for volume-weighted remitter TD.
 
-MERCHANT_BLENDED_SUCCESS_RANGE: Final[tuple[float, float]] = (0.90, 0.97)
-"""Merchant-side blended success once BD is included. Below 0.90 indicates a
-misconfigured world rather than a realistic one."""
+Long-run trend is downward: roughly 8-10% in 2016, ~0.7-0.8% by 2025, 0.376%
+observed in 2026-07. The floor is deliberately far below the current value so
+continued improvement does not start rejecting valid snapshots.
+"""
+
+REMITTER_APPROVAL_RATE_RANGE: Final[tuple[float, float]] = (0.80, 0.96)
+"""Plausible band for volume-weighted remitter approval rate.
+
+NOT the same quantity as merchant checkout success. This covers all UPI
+traffic on the remitter side, including P2P, where user-side business
+declines (wrong PIN, insufficient balance, abandonment) are counted. The
+merchant-side figure below is measured on a different denominator and the
+two must not be compared.
+"""
+
+MERCHANT_P2M_SUCCESS_RANGE: Final[tuple[float, float]] = (0.90, 0.97)
+"""Merchant-side P2M checkout success, post-retry.
+
+Recorded for reference and used in Phase 3 as a target for the generated
+merchant world. Deliberately NOT used to validate remitter snapshots -
+conflating the two was INC-006.
+"""
+
+APPROVED_BD_TD_SUM_TOLERANCE: Final[float] = 0.0005
+"""Per-row tolerance on approved + BD + TD = 1.0.
+
+NPCI publishes these to two decimal places as percentages, so rounding can
+put a row at 99.99 or 100.01. Anything further out means a parsing or source
+problem.
+"""
 
 # --- RBI E-mandate Framework, 2026 -----------------------------------------
 # Issued 2026-04-21. Mirrored in configs/compliance/policy.yaml; duplicated

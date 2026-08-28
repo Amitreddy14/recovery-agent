@@ -61,7 +61,7 @@ class TestLoading:
     def test_duplicate_banks_rejected(self, tmp_path: Path) -> None:
         bad = tmp_path / "dupe.csv"
         bad.write_text(
-            "bank_name,td_rate,bd_rate,volume_millions\nA,0.008,0.04,100\nA,0.009,0.04,100\n",
+            "bank_name,td_rate,bd_rate,total_volume_mn\nA,0.008,0.04,100\nA,0.009,0.04,100\n",
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="duplicate bank names"):
@@ -80,7 +80,7 @@ class TestPublishedBounds:
         # 0.8 and 4.0 as *rates* means 80% and 400% decline. Nonsense, but the
         # kind of nonsense that arrives from a copy-paste.
         bad.write_text(
-            "bank_name,td_rate,bd_rate,volume_millions\nA,0.8,4.0,100\n",
+            "bank_name,td_rate,bd_rate,total_volume_mn\nA,0.8,4.0,100\n",
             encoding="utf-8",
         )
         with pytest.raises((CalibrationError, ValueError)):
@@ -90,7 +90,7 @@ class TestPublishedBounds:
         """A world where nothing fails is not a calibration, it is a bug."""
         bad = tmp_path / "utopia.csv"
         bad.write_text(
-            "bank_name,td_rate,bd_rate,volume_millions\nA,0.00001,0.00001,100\n",
+            "bank_name,td_rate,bd_rate,total_volume_mn\nA,0.00001,0.00001,100\n",
             encoding="utf-8",
         )
         with pytest.raises(CalibrationError, match="outside the plausible"):
@@ -99,7 +99,7 @@ class TestPublishedBounds:
     def test_fixture_sits_inside_published_bounds(self, snapshot: NpciSnapshot) -> None:
         lo, hi = priors.SYSTEM_TD_RATE_RANGE
         assert lo <= snapshot.volume_weighted_td <= hi
-        slo, shi = priors.MERCHANT_BLENDED_SUCCESS_RANGE
+        slo, shi = priors.REMITTER_APPROVAL_RATE_RANGE
         assert slo <= snapshot.volume_weighted_success <= shi
 
 
@@ -216,3 +216,59 @@ def _fixture_provenance() -> Provenance:
         retrieved_on=date(2026, 8, 26),
         retrieved_by="test suite",
     )
+
+
+class TestRealDataCompatibility:
+    """Regression guard for INC-006.
+
+    Real NPCI figures for 2026-07 (top 20 remitter banks by volume) were
+    rejected by the original bounds. These assertions pin the corrected
+    bands to the observed values so the same mistake cannot recur silently.
+    """
+
+    OBSERVED_TD = 0.00376
+    OBSERVED_BD = 0.10884
+    OBSERVED_APPROVAL = 0.88737
+
+    def test_observed_td_is_accepted(self) -> None:
+        lo, hi = priors.SYSTEM_TD_RATE_RANGE
+        assert lo <= self.OBSERVED_TD <= hi
+
+    def test_observed_approval_is_accepted(self) -> None:
+        lo, hi = priors.REMITTER_APPROVAL_RATE_RANGE
+        assert lo <= self.OBSERVED_APPROVAL <= hi
+
+    def test_merchant_band_is_not_used_for_remitter_data(self) -> None:
+        """The two metrics have different denominators. Observed remitter
+        approval falls outside the merchant band, which is exactly why
+        conflating them broke calibration."""
+        mlo, _ = priors.MERCHANT_P2M_SUCCESS_RANGE
+        assert mlo > self.OBSERVED_APPROVAL
+
+    def test_components_sum_to_one(self) -> None:
+        total = self.OBSERVED_TD + self.OBSERVED_BD + self.OBSERVED_APPROVAL
+        assert abs(total - 1.0) < 0.001
+
+    def test_row_with_bad_component_sum_is_rejected(self) -> None:
+        from recovery.calibration.models import IssuerStatistic
+
+        with pytest.raises(ValueError, match="approved \\+ BD \\+ TD"):
+            IssuerStatistic(
+                bank_name="Mismatched",
+                td_rate=0.0068,
+                bd_rate=0.0902,
+                volume_millions=100.0,
+                approved_rate=0.50,
+            )
+
+    def test_real_row_passes(self) -> None:
+        from recovery.calibration.models import IssuerStatistic
+
+        sbi = IssuerStatistic(
+            bank_name="State Bank of India",
+            td_rate=0.0068,
+            bd_rate=0.0902,
+            volume_millions=6622.02,
+            approved_rate=0.9029,
+        )
+        assert sbi.approved_rate == 0.9029

@@ -246,3 +246,13 @@ have been silently held fixed while being reported as swept.
 worked. Recording it because it demonstrates why the registry test is worth
 its cost: an unswept assumption reported as swept is a false claim, and it
 would have been invisible in the results.
+
+
+**Follow-up:** the full 50-row file contained a *second* non-bank entity
+(One Mobikwik Systems Limited) not visible in the sampled screenshot, with
+the same signature as the first: 100.00% approved, zero BD, zero TD. The
+exclusion rule is therefore stated as a signature rather than a name list —
+a technology provider reporting perfect approval and no declines is not an
+issuing bank. Patching the one row I had seen would have left the second in.
+
+

@@ -16,7 +16,7 @@ import yaml
 from recovery.calibration import priors
 from recovery.calibration.models import IssuerStatistic, NpciSnapshot, Provenance
 
-REQUIRED_COLUMNS = frozenset({"bank_name", "td_rate", "bd_rate", "volume_millions"})
+REQUIRED_COLUMNS = frozenset({"bank_name", "td_rate", "bd_rate", "total_volume_mn"})
 
 
 class CalibrationError(RuntimeError):
@@ -69,7 +69,12 @@ def _load_issuers(path: Path) -> tuple[IssuerStatistic, ...]:
                         bank_name=row["bank_name"].strip(),
                         td_rate=_percent_to_rate(row["td_rate"]),
                         bd_rate=_percent_to_rate(row["bd_rate"]),
-                        volume_millions=float(row["volume_millions"]),
+                        volume_millions=float(row["total_volume_mn"].replace(",", "")),
+                        approved_rate=(
+                            _percent_to_rate(row["approved_rate"])
+                            if row.get("approved_rate")
+                            else None
+                        ),
                     )
                 )
             except (ValueError, KeyError) as exc:
@@ -107,9 +112,11 @@ def _check_against_published_bounds(snapshot: NpciSnapshot) -> None:
         )
 
     success = snapshot.volume_weighted_success
-    slo, shi = priors.MERCHANT_BLENDED_SUCCESS_RANGE
+    slo, shi = priors.REMITTER_APPROVAL_RATE_RANGE
     if not slo <= success <= shi:
         raise CalibrationError(
-            f"volume-weighted success is {success:.4%}, outside the plausible "
-            f"band {slo:.1%}-{shi:.1%}"
+            f"volume-weighted approval is {success:.4%}, outside the plausible "
+            f"remitter band {slo:.1%}-{shi:.1%}. Note this is remitter-side "
+            "approval across all UPI traffic, not merchant checkout success - "
+            "the two have different denominators (INC-006)."
         )

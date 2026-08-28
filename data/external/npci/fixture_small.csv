@@ -1,5 +1,5 @@
-bank_name,td_rate,bd_rate,volume_millions
-FIXTURE Bank A,0.0065,0.0380,9000.0
-FIXTURE Bank B,0.0180,0.0510,4200.0
-FIXTURE Bank C,0.0042,0.0295,7100.0
-FIXTURE Bank D,0.0240,0.0620,1500.0
+bank_name,total_volume_mn,approved_rate,bd_rate,td_rate
+FIXTURE Bank A,9000.0,0.9130,0.0805,0.0065
+FIXTURE Bank B,4200.0,0.8100,0.1720,0.0180
+FIXTURE Bank C,7100.0,0.9298,0.0660,0.0042
+FIXTURE Bank D,1500.0,0.7900,0.1860,0.0240

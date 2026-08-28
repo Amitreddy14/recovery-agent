@@ -11,6 +11,7 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from recovery.calibration import priors
 from recovery.domain.enums import FailureReason
 
 
@@ -19,12 +20,18 @@ class Frozen(BaseModel):
 
 
 class IssuerStatistic(Frozen):
-    """One bank's published figures for one month."""
+    """One bank's published figures for one month.
+
+    `approved_rate` is optional but strongly preferred: when present it lets
+    us validate approved + BD + TD = 1.0 per row, which is a property of the
+    source rather than an assumption of ours.
+    """
 
     bank_name: str
     td_rate: float = Field(ge=0.0, le=1.0)
     bd_rate: float = Field(ge=0.0, le=1.0)
     volume_millions: float = Field(gt=0.0)
+    approved_rate: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @property
     def total_decline_rate(self) -> float:
@@ -40,6 +47,25 @@ class IssuerStatistic(Frozen):
             raise ValueError(
                 f"{self.bank_name}: TD + BD = {self.total_decline_rate:.4f} "
                 "leaves no successful transactions"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _components_sum_to_one(self) -> IssuerStatistic:
+        """approved + BD + TD must account for every transaction.
+
+        This is the strongest single check available, because it is an
+        internal property of NPCI's own table. It catches a percent/rate
+        confusion, a mis-mapped column, and a bad row - all at once.
+        """
+        if self.approved_rate is None:
+            return self
+        total = self.approved_rate + self.bd_rate + self.td_rate
+        if abs(total - 1.0) > priors.APPROVED_BD_TD_SUM_TOLERANCE:
+            raise ValueError(
+                f"{self.bank_name}: approved + BD + TD = {total:.5f}, expected "
+                f"1.0. Check column mapping and whether values are rates or "
+                f"percentages."
             )
         return self
 

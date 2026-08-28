@@ -1,46 +1,442 @@
 {
   "provenance": {
-    "source_name": "SYNTHETIC FIXTURE - not NPCI data",
-    "source_url": "https://example.invalid/fixture",
-    "reporting_period": "fixture",
+    "source_name": "NPCI UPI Ecosystem Statistics - Top 50 Member Performance (Remitter)",
+    "source_url": "https://www.npci.org.in/what-we-do/upi/upi-ecosystem-statistics",
+    "reporting_period": "2026-07",
     "retrieved_on": "2026-08-26",
-    "retrieved_by": "test suite",
-    "notes": "Synthetic values used only to exercise the loader and calibrator in tests. Bank names are deliberately prefixed FIXTURE so this file can never be mistaken for published evidence.\n"
+    "retrieved_by": "Amit",
+    "notes": "Source file: Ecosystem-Statistics-UPI-Top-50-member-performance-2026-Jul-Remitter.xlsx, sheet Sheet20. Remitter (payer-side) table, which is the correct side for issuer-decline modelling.\nAll 48 issuing banks retained - no volume cutoff applied, so there is no threshold to justify. Volume-weighted aggregates are stable across cutoffs (TD 0.374%-0.402% from top-15 through full table), so the choice does not drive downstream results.\nTwo non-bank entities excluded: Tri O Tech Solutions Private Limited and One Mobikwik Systems Limited. Both report 100.00% approved with zero BD and zero TD, which is characteristic of a technology provider rather than an issuing bank. Together they are 231.70 Mn of 25,897.80 Mn (0.89%). Including them would grant a non-issuer a volume share and a perfect approval rate, biasing the world's aggregates upward.\nPercentages in the source are stored as text (\"90.29%\") and were divided by 100 to rates. Every row satisfies approved + BD + TD = 1.0 within NPCI's two-decimal rounding.\nAEPS BD/TD file deliberately not used: Aadhaar-enabled banking-correspondent transactions are a different rail with materially different decline behaviour.\n"
   },
   "issuers": [
     {
-      "bank_name": "FIXTURE Bank A",
-      "volume_share": 0.41284403669724773,
-      "published_td_rate": 0.0065,
-      "published_bd_rate": 0.038,
-      "baseline_td_rate": 0.00580789277736411,
+      "bank_name": "State Bank of India",
+      "volume_share": 0.2580065363982125,
+      "published_td_rate": 0.0068,
+      "published_bd_rate": 0.0902,
+      "baseline_td_rate": 0.0060759493670886075,
       "degradation_episode_rate_per_day": 0.08,
       "degradation_td_multiplier": 12.0
     },
     {
-      "bank_name": "FIXTURE Bank B",
-      "volume_share": 0.1926605504587156,
-      "published_td_rate": 0.018,
-      "published_bd_rate": 0.051,
-      "baseline_td_rate": 0.016083395383469843,
+      "bank_name": "Bank of Baroda",
+      "volume_share": 0.06913512580741095,
+      "published_td_rate": 0.0022,
+      "published_bd_rate": 0.1395,
+      "baseline_td_rate": 0.0019657483246463144,
       "degradation_episode_rate_per_day": 0.08,
       "degradation_td_multiplier": 12.0
     },
     {
-      "bank_name": "FIXTURE Bank C",
-      "volume_share": 0.3256880733944954,
-      "published_td_rate": 0.0042,
-      "published_bd_rate": 0.0295,
-      "baseline_td_rate": 0.003752792256142963,
+      "bank_name": "HDFC Bank Ltd.",
+      "volume_share": 0.06768524520665979,
+      "published_td_rate": 0.0001,
+      "published_bd_rate": 0.0699,
+      "baseline_td_rate": 8.935219657483247e-05,
       "degradation_episode_rate_per_day": 0.08,
       "degradation_td_multiplier": 12.0
     },
     {
-      "bank_name": "FIXTURE Bank D",
-      "volume_share": 0.06880733944954129,
-      "published_td_rate": 0.024,
+      "bank_name": "Union Bank of India",
+      "volume_share": 0.06016596745192534,
+      "published_td_rate": 0.0001,
+      "published_bd_rate": 0.1039,
+      "baseline_td_rate": 8.935219657483247e-05,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Punjab National Bank",
+      "volume_share": 0.05727867643365245,
+      "published_td_rate": 0.007,
+      "published_bd_rate": 0.111,
+      "baseline_td_rate": 0.006254653760238273,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Canara Bank",
+      "volume_share": 0.048765021286535676,
+      "published_td_rate": 0.0024,
+      "published_bd_rate": 0.0928,
+      "baseline_td_rate": 0.002144452717795979,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Kotak Mahindra Bank",
+      "volume_share": 0.04574070295721892,
+      "published_td_rate": 0.0003,
+      "published_bd_rate": 0.1127,
+      "baseline_td_rate": 0.0002680565897244974,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Axis Bank Ltd.",
+      "volume_share": 0.04116692120160639,
+      "published_td_rate": 0.0,
+      "published_bd_rate": 0.0705,
+      "baseline_td_rate": 0.0,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "India Post Payments Bank Limited",
+      "volume_share": 0.03599741970062659,
+      "published_td_rate": 0.0034,
+      "published_bd_rate": 0.1885,
+      "baseline_td_rate": 0.0030379746835443038,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Indian Bank",
+      "volume_share": 0.0327270498713228,
+      "published_td_rate": 0.0006,
+      "published_bd_rate": 0.114,
+      "baseline_td_rate": 0.0005361131794489948,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "ICICI Bank Ltd.",
+      "volume_share": 0.03096345560780746,
+      "published_td_rate": 0.0017,
+      "published_bd_rate": 0.0488,
+      "baseline_td_rate": 0.0015189873417721519,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Airtel Payments Bank Limited",
+      "volume_share": 0.030745688729615958,
+      "published_td_rate": 0.0047,
+      "published_bd_rate": 0.2697,
+      "baseline_td_rate": 0.004199553239017126,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Bank of India",
+      "volume_share": 0.029770396432115882,
+      "published_td_rate": 0.0068,
+      "published_bd_rate": 0.0934,
+      "baseline_td_rate": 0.0060759493670886075,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Indian Overseas Bank",
+      "volume_share": 0.0181875344104326,
+      "published_td_rate": 0.0008,
+      "published_bd_rate": 0.0974,
+      "baseline_td_rate": 0.0007148175725986598,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Central Bank of India",
+      "volume_share": 0.01767993053722725,
+      "published_td_rate": 0.0163,
+      "published_bd_rate": 0.1225,
+      "baseline_td_rate": 0.014564408041697691,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Uco Bank",
+      "volume_share": 0.013996111216251106,
+      "published_td_rate": 0.0009,
+      "published_bd_rate": 0.1286,
+      "baseline_td_rate": 0.0008041697691734921,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Federal Bank Ltd.",
+      "volume_share": 0.01190907933594511,
+      "published_td_rate": 0.0009,
+      "published_bd_rate": 0.0998,
+      "baseline_td_rate": 0.0008041697691734921,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Fino Payments Bank Ltd.",
+      "volume_share": 0.011469460658592338,
+      "published_td_rate": 0.0023,
+      "published_bd_rate": 0.2364,
+      "baseline_td_rate": 0.0020551005212211468,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Indusind Bank Ltd.",
+      "volume_share": 0.010413354727381311,
+      "published_td_rate": 0.0039,
+      "published_bd_rate": 0.1493,
+      "baseline_td_rate": 0.003484735666418466,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Bank of Maharashtra",
+      "volume_share": 0.010271457607983224,
+      "published_td_rate": 0.0002,
+      "published_bd_rate": 0.1027,
+      "baseline_td_rate": 0.00017870439314966494,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "IDBI Bank Ltd.",
+      "volume_share": 0.009194788367575433,
+      "published_td_rate": 0.0085,
+      "published_bd_rate": 0.0918,
+      "baseline_td_rate": 0.00759493670886076,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Yes Bank Ltd.",
+      "volume_share": 0.006953672515545856,
+      "published_td_rate": 0.0014,
+      "published_bd_rate": 0.0795,
+      "baseline_td_rate": 0.0012509307520476545,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "IDFC Bank Ltd.",
+      "volume_share": 0.00694946315028192,
+      "published_td_rate": 0.0005,
+      "published_bd_rate": 0.073,
+      "baseline_td_rate": 0.00044676098287416236,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Karnataka Bank",
+      "volume_share": 0.006554852592236146,
+      "published_td_rate": 0.0018,
+      "published_bd_rate": 0.1054,
+      "baseline_td_rate": 0.0016083395383469843,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "The Jammu & Kashmir Bank Limited",
+      "volume_share": 0.005043961325580502,
+      "published_td_rate": 0.0019,
+      "published_bd_rate": 0.0772,
+      "baseline_td_rate": 0.0016976917349218168,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Karur Vysya Bank",
+      "volume_share": 0.004489056698252388,
+      "published_td_rate": 0.0017,
+      "published_bd_rate": 0.0751,
+      "baseline_td_rate": 0.0015189873417721519,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Bandhan Bank Limited",
+      "volume_share": 0.004173725142778372,
+      "published_td_rate": 0.004,
       "published_bd_rate": 0.062,
-      "baseline_td_rate": 0.02144452717795979,
+      "baseline_td_rate": 0.003574087862993299,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Jio Payments Bank Ltd",
+      "volume_share": 0.004079656828072496,
+      "published_td_rate": 0.001,
+      "published_bd_rate": 0.2417,
+      "baseline_td_rate": 0.0008935219657483247,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Baroda U.P. Bank",
+      "volume_share": 0.003950697629459078,
+      "published_td_rate": 0.0195,
+      "published_bd_rate": 0.0788,
+      "baseline_td_rate": 0.01742367833209233,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "AU Small Finance Bank",
+      "volume_share": 0.0039127488991085296,
+      "published_td_rate": 0.0022,
+      "published_bd_rate": 0.1409,
+      "baseline_td_rate": 0.0019657483246463144,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "North East Small Finance Bank Ltd",
+      "volume_share": 0.003893198131651514,
+      "published_td_rate": 0.0011,
+      "published_bd_rate": 0.058,
+      "baseline_td_rate": 0.0009828741623231572,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "The South Indian Bank Limited",
+      "volume_share": 0.003481933506192024,
+      "published_td_rate": 0.001,
+      "published_bd_rate": 0.0725,
+      "baseline_td_rate": 0.0008935219657483247,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "NSDL Payments Bank Limited",
+      "volume_share": 0.0033688007074466272,
+      "published_td_rate": 0.0053,
+      "published_bd_rate": 0.2453,
+      "baseline_td_rate": 0.004735666418466121,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Punjab And Sind Bank",
+      "volume_share": 0.0029078687044090893,
+      "published_td_rate": 0.0049,
+      "published_bd_rate": 0.1324,
+      "baseline_td_rate": 0.004378257632166791,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Rajasthan Marudhara Gramin Bank",
+      "volume_share": 0.0028925084056967026,
+      "published_td_rate": 0.0563,
+      "published_bd_rate": 0.1503,
+      "baseline_td_rate": 0.05030528667163068,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Tamilnad Mercantile Bank Limited",
+      "volume_share": 0.0027902966262545255,
+      "published_td_rate": 0.0101,
+      "published_bd_rate": 0.0867,
+      "baseline_td_rate": 0.009024571854058078,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Ujjivan Small Finance Bank Limited",
+      "volume_share": 0.0026863043661126745,
+      "published_td_rate": 0.0033,
+      "published_bd_rate": 0.1401,
+      "baseline_td_rate": 0.0029486224869694714,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "City Union Bank",
+      "volume_share": 0.002617032999128385,
+      "published_td_rate": 0.0017,
+      "published_bd_rate": 0.0859,
+      "baseline_td_rate": 0.0015189873417721519,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Kerala Gramin Bank",
+      "volume_share": 0.0025711734844813447,
+      "published_td_rate": 0.0025,
+      "published_bd_rate": 0.0731,
+      "baseline_td_rate": 0.0022338049143708115,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Karnataka Gramin Bank",
+      "volume_share": 0.0025608121917685997,
+      "published_td_rate": 0.0041,
+      "published_bd_rate": 0.1206,
+      "baseline_td_rate": 0.0036634400595681313,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Telangana Grameena Bank",
+      "volume_share": 0.002339094811146737,
+      "published_td_rate": 0.038,
+      "published_bd_rate": 0.1502,
+      "baseline_td_rate": 0.03395383469843634,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Chaitanya Godavari Grameena Bank",
+      "volume_share": 0.0021545951188305205,
+      "published_td_rate": 0.0011,
+      "published_bd_rate": 0.1145,
+      "baseline_td_rate": 0.0009828741623231572,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Maharashtra Gramin Bank",
+      "volume_share": 0.001743447963485905,
+      "published_td_rate": 0.015,
+      "published_bd_rate": 0.1552,
+      "baseline_td_rate": 0.01340282948622487,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Esaf Small Finance Bank Ltd",
+      "volume_share": 0.0015147395720341624,
+      "published_td_rate": 0.0088,
+      "published_bd_rate": 0.0453,
+      "baseline_td_rate": 0.007862993298585258,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Saraswat Co-Operative Bank",
+      "volume_share": 0.0013453027433202337,
+      "published_td_rate": 0.0064,
+      "published_bd_rate": 0.067,
+      "baseline_td_rate": 0.005718540580789278,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Dbs Bank India Limited",
+      "volume_share": 0.0012824086593882132,
+      "published_td_rate": 0.0019,
+      "published_bd_rate": 0.0953,
+      "baseline_td_rate": 0.0016976917349218168,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Sarva Haryana Gramin Bank",
+      "volume_share": 0.0012683712728749753,
+      "published_td_rate": 0.0027,
+      "published_bd_rate": 0.1189,
+      "baseline_td_rate": 0.0024125093075204767,
+      "degradation_episode_rate_per_day": 0.08,
+      "degradation_td_multiplier": 12.0
+    },
+    {
+      "bank_name": "Equitas Small Finance Bank",
+      "volume_share": 0.0012043520083633696,
+      "published_td_rate": 0.0008,
+      "published_bd_rate": 0.1195,
+      "baseline_td_rate": 0.0007148175725986598,
       "degradation_episode_rate_per_day": 0.08,
       "degradation_td_multiplier": 12.0
     }
