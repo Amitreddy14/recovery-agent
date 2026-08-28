@@ -256,3 +256,30 @@ a technology provider reporting perfect approval and no declines is not an
 issuing bank. Patching the one row I had seen would have left the second in.
 
 
+### INC-008 — A type fix was reported clean by a checker that never ran
+
+**Phase:** 3
+**Symptom:** mypy flagged `PaymentMethod(rng.choice([...]))` as passing a
+numpy scalar where a str was expected. A fix was applied and reported clean,
+but the error persisted on the next run.
+
+**Cause:** two failures stacked.
+1. The patch was a string replacement matching post-format text against a
+   file that had not yet been formatted. It failed silently: the new constant
+   was added, the call site was untouched.
+2. The verification environment lacked numpy's type stubs, so mypy inferred
+   `Any` for the `rng.choice` return and reported no error. A green result
+   meant "not checked", not "correct".
+
+**Fix:** Index a module-level `ONE_OFF_METHODS` tuple with `rng.integers`.
+Verified by reading the changed line back from disk.
+
+**Changed as a result:** Edits are confirmed by re-reading the file, not by
+a subsequent command exiting zero. And a checker's silence is only evidence
+when the checker can actually see the types involved — a stub-less mypy run
+is indistinguishable from a passing one.
+
+**Note:** batch output was byte-identical after the change, because
+`Generator.choice` delegates to `integers` when no `p` is supplied. Verified
+rather than assumed — a change to sampling calls can otherwise shift every
+reported number silently, which is much of what `v0.4-world-frozen` protects.

@@ -104,5 +104,47 @@ def calibrate_command(
     console.print(f"\n[green]Wrote[/green] {output}")
 
 
+@app.command("generate")
+def generate_command(
+    params_path: Annotated[
+        Path, typer.Option("--params", help="Calibrated world parameters.")
+    ] = DEFAULT_OUTPUT,
+    n_cases: Annotated[int, typer.Option("--cases")] = 5000,
+    seed: Annotated[int, typer.Option("--seed")] = 42,
+    out_dir: Annotated[Path, typer.Option("--out")] = Path("data/generated/batch"),
+) -> None:
+    """Generate a batch of recovery cases with quarantined potential outcomes."""
+    from collections import Counter
+
+    from recovery.calibration.models import WorldParameters
+    from recovery.world.generate import generate, write_batch
+    from recovery.world.oracle.segments import Segment, classify
+
+    params = WorldParameters.model_validate_json(params_path.read_text(encoding="utf-8"))
+    observable, oracle = generate(params, n_cases=n_cases, seed=seed)
+    cases_p, logged_p, oracle_p = write_batch(observable, oracle, out_dir)
+
+    counts = Counter(classify(o) for o in oracle.outcomes)
+    table = Table(title=f"Batch seed={seed}  n={n_cases}")
+    table.add_column("Segment")
+    table.add_column("Cases", justify="right")
+    table.add_column("Share", justify="right")
+    for segment in Segment:
+        if counts[segment]:
+            table.add_row(segment.value, str(counts[segment]), f"{counts[segment] / n_cases:.1%}")
+    console.print(table)
+
+    holdout = sum(d.is_holdout for d in observable.logged)
+    console.print(
+        f"Randomised holdout [bold]{holdout / n_cases:.1%}[/bold] | "
+        f"calibration [dim]{observable.params_provenance}[/dim]"
+    )
+    console.print(f"\n[green]Wrote[/green] {cases_p}\n[green]Wrote[/green] {logged_p}")
+    console.print(
+        f"[yellow]Wrote[/yellow] {oracle_p} "
+        "[dim](quarantined - policy code must not read this)[/dim]"
+    )
+
+
 if __name__ == "__main__":
     app()
