@@ -22,6 +22,7 @@ dependencies = [
     "razorpay>=1.4",
     "anthropic>=0.34",
     "tenacity>=8.3",
+    "scipy>=1.13",
 ]
 
 [project.optional-dependencies]
@@ -59,7 +60,7 @@ warn_unreachable = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["lightgbm.*", "sklift.*", "razorpay.*", "sklearn.*"]
+module = ["lightgbm.*", "sklift.*", "razorpay.*", "sklearn.*", "scipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -79,7 +80,7 @@ addopts = "-q --strict-markers"
 root_package = "recovery"
 
 [[tool.importlinter.contracts]]
-name = "Decision-making code cannot see ground-truth outcomes"
+name = "Decision-making code cannot import the world"
 type = "forbidden"
 source_modules = [
     "recovery.diagnose",
@@ -89,7 +90,11 @@ source_modules = [
     "recovery.execute",
     "recovery.api",
 ]
-forbidden_modules = ["recovery.world.oracle"]
+# The whole package, not just `oracle`. `world.timeline` exposes
+# `is_degraded()` - the exact fact the diagnosis layer must infer - and
+# `world.latent` holds the hidden traits. Barring only `oracle` left both
+# reachable (ADR-0011).
+forbidden_modules = ["recovery.world"]
 
 [[tool.importlinter.contracts]]
 name = "Domain layer depends on nothing internal"

@@ -36,11 +36,13 @@ from recovery.domain.enums import (
     PaymentMethod,
     PaymentStep,
 )
+from recovery.domain.observations import CaseFeatures, LoggedDecision
 
 __all__ = [
     "Action",
     "ActionScore",
     "ActionType",
+    "CaseFeatures",
     "CaseState",
     "CaseType",
     "Channel",
@@ -54,6 +56,7 @@ __all__ = [
     "FailureReason",
     "GateResult",
     "GateVerdict",
+    "LoggedDecision",
     "Mandate",
     "MandateCategory",
     "Merchant",

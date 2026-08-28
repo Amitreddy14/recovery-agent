@@ -50,6 +50,14 @@ and fails the build on violation.
 evidence. A reviewer can verify this in thirty seconds without reading the
 model code.
 
+
+## ADR-0002 — Ground-truth outcomes are quarantined by CI, not by convention
+
+**Date:** Phase 0
+**Status:** Superseded by ADR-0011 (Phase 4). The contract described here
+forbade only `recovery.world.oracle`, which left `world.timeline` and
+`world.latent` reachable from decision code. Retained for the record.
+
 ---
 
 ## ADR-0003 — Money is integer paise, everywhere
@@ -218,6 +226,79 @@ the actions being targeted. Human escalation is not a targeting choice but an
 expensive fallback, priced by the decision engine rather than selected by the
 uplift model. Its cost is roughly 80x a payment link, so it is never the
 answer to "who should we contact".
+
+---
+
+## ADR-0011 — Decision code cannot import the world at all
+
+**Date:** Phase 4
+**Status:** Accepted. Supersedes the narrower contract in ADR-0002.
+
+**Context.** The original contract forbade decision modules from importing
+`recovery.world.oracle`. Starting Phase 4 exposed the gap: `world.timeline`
+exposes `is_degraded()` — precisely the fact the diagnosis layer exists to
+infer — and `world.latent` holds the hidden customer traits. Neither lives
+under `oracle/`, so both were reachable from `diagnose`, `uplift` and
+`policy`.
+
+**Decision.** `CaseFeatures` and `LoggedDecision` moved to
+`recovery.domain.observations`, and the contract now forbids
+`recovery.world` entirely.
+
+**Reasoning.** Those two models are the interface between simulator and
+policy, not part of the simulator, so `domain` is where they belong on
+architectural grounds alone. Moving them also removes the last reason
+decision code had to import `world`, which turns a contract with a carve-out
+into a flat prohibition. "The policy cannot import the world" is a claim a
+reviewer can check in one line; "the policy cannot import certain modules
+within the world" is one they have to audit.
+
+**Cost accepted.** A refactor mid-build. Batch output verified byte-identical
+afterwards.
+
+---
+
+## ADR-0012 — Root cause is rules; issuer health is a model
+
+**Date:** Phase 4
+**Status:** Accepted
+
+**Decision.** `taxonomy.py` maps failure reason to recoverability class by
+lookup. `issuer_health.py` estimates degradation with an empirical-Bayes
+posterior.
+
+**Reasoning.** These are different kinds of question. What an error code
+means is knowledge we already have from Razorpay's error contract; no volume
+of training data improves on "an expired card cannot be fixed by retrying
+it," and a model there would be slower, unexplainable in an audit trail, and
+less accurate than the rule. Whether an issuer is degraded *right now* is
+genuinely uncertain, must be inferred from a small noisy sample, and is
+exactly where a model earns its place.
+
+This is the concrete answer to the track's "where you chose not to use AI."
+
+---
+
+## ADR-0013 — Detection threshold is chosen on expected cost, not F1
+
+**Date:** Phase 4
+**Status:** Accepted
+
+**Context.** The two detection errors have very different consequences. A
+false positive defers a retry that would have worked — a delay. A false
+negative retries into a degraded issuer, burning an attempt against a hard
+per-case cap and forfeiting most of the recovery probability.
+
+**Decision.** False negatives are weighted 10x false positives, and the
+operating threshold is selected by minimising expected cost.
+
+**Reasoning.** F1 weights both errors equally, which is simply false here. On
+the current batch F1 prefers 0.90 while cost prefers 0.80: the higher
+threshold looks better on a symmetric metric precisely because it trades
+recall for precision, and recall is the expensive side.
+
+**Honest caveat.** The 10:1 ratio is a modelling judgement, not a measured
+quantity. It is registered as a Tier-2 assumption and swept in Phase 9.
 
 ---
 
@@ -402,3 +483,114 @@ supplied, so the random stream position was preserved. This was verified by
 regenerating and comparing, not assumed. Any change to how the generator
 draws randomness can otherwise shift every reported number with no visible
 error — which is a large part of what `v0.4-world-frozen` exists to protect.
+
+### INC-009 — A test asserted a property of the sample, not of the code
+
+**Phase:** 4
+**Symptom:** `test_cost_weighting_changes_the_chosen_threshold` passed at
+n=8000 and failed at n=6000.
+
+**Cause:** The test compared the F1-optimal threshold against the
+cost-optimal one and asserted they differ. That comparison depends on where
+the sampled scores happen to fall, not on whether the cost function weights
+the two errors asymmetrically. At 8000 cases F1 chose 0.90 and cost chose
+0.80; at 6000 both chose 0.80. Nothing was wrong with the code — the
+assertion was about the batch.
+
+**Fix:** Replaced with two tests that assert the actual properties.
+`test_cost_penalises_missed_degradation_more_than_false_alarms` constructs
+two scores with identical F1 and opposite error splits and asserts the
+false-negative-heavy one costs more — deterministic, no sampling involved.
+`test_cost_optimum_is_interior` checks the chosen threshold is not at either
+endpoint, which would indicate the threshold is not doing real work.
+
+**Changed as a result:** A test whose outcome depends on sample size is a
+measurement, not an assertion. Where a property is genuinely about the
+objective function, it should be tested against constructed inputs rather
+than fitted ones — otherwise a future batch-size change produces a red build
+with no defect behind it.
+
+### INC-010 — A dependency-file overwrite silently reverted a prior fix
+
+**Phase:** 4
+**Symptom:** `mypy src tests` failed with `Type statement is only supported in
+Python 3.12 and greater` inside numpy's stubs — the identical failure as
+INC-002, already fixed in Phase 1.
+
+**Cause:** The Phase 4 file set included `pyproject.toml`, because the import
+contract needed tightening (ADR-0011). That file also carries
+`python_version` and `requires-python`, both corrected locally during Phase 1.
+The overwrite delivered the intended change and silently reverted two
+unrelated ones.
+
+**Fix:** Restored `python_version = "3.12"` and
+`requires-python = ">=3.12,<3.14"`. Added `scipy` as an explicit dependency
+(it was previously only transitive via scikit-learn, while
+`diagnose/issuer_health.py` imports it directly) and to the
+`ignore_missing_imports` overrides.
+
+**Changed as a result:** Configuration files that accumulate local
+corrections are not safe to overwrite wholesale, even when a change to them
+is genuinely required. Structural changes to `pyproject.toml` are applied as
+targeted edits from here on. Running the four gates immediately after any
+config change is what caught this, and that ordering is now deliberate rather
+than incidental.
+
+### INC-011 — Fourteen type suppressions, all misplaced, none needed
+
+**Phase:** 4
+**Symptom:** `mypy src tests` reported 27 errors in `test_diagnose.py` — one
+`no-untyped-def` and one `unused-ignore` per test — followed by a fourteenth
+on a separate line after those were fixed.
+
+**Cause:** two related failures.
+
+1. Each test signature was wrapped across lines with the
+   `# type: ignore[no-untyped-def]` comment on the parameter line. mypy
+   attributes that error to the `def` line, so every suppression sat one line
+   below the error it was meant to silence. The error fired *and* the comment
+   was flagged as dead — two errors from one bad habit.
+2. A fourteenth ignore on `CaseFeatures(**base)` was dead for the same reason
+   as INC-003: mypy's pydantic plugin does not narrow through
+   `**dict[str, object]`, so there was no error to suppress.
+**Fix:** Defined `Batch = tuple[ObservableBatch, OracleBatch]` and annotated
+every fixture parameter. Typed the `_features` helper's overrides as
+`dict[str, Any]`, which is accurate — the helper exists to accept arbitrary
+field overrides — and keeps Pylance and mypy in agreement. All fourteen
+suppressions removed; none were replaced.
+
+**Changed as a result:**
+- A suppression is a last resort, not a first response. This is the third
+  incident in the same family (INC-003, INC-008, INC-011) and in every case
+  the type was expressible and the annotation was shorter than the workaround.
+- `# type: ignore` binds to a specific line, so any formatter that rewraps a
+  signature silently detaches it from the error it was suppressing. That makes
+  a wrapped signature carrying an ignore comment inherently fragile.
+- Test helpers accepting arbitrary overrides use `dict[str, Any]` by default.
+### INC-012 — Verified the import contract by deliberately breaking it
+
+**Phase:** 4
+**Status:** Not a defect. Recorded because the result is the project's central
+integrity claim and it should be demonstrable, not merely asserted.
+
+**Action:** Appended `from recovery.world.timeline import IssuerTimeline` to
+`diagnose/taxonomy.py` and ran `lint-imports`.
+
+**Result:** Build failed, naming the contract, the module pair and the line
+numbers:
+
+    Decision-making code cannot import the world BROKEN
+    recovery.diagnose.taxonomy -> recovery.world.timeline (l.120, l.122)
+
+`world.timeline` exposes `is_degraded()` — precisely the fact the diagnosis
+layer exists to infer. Had this import been possible, the detector could have
+scored perfectly and the Phase 4 results would have been meaningless. CI
+rejects it.
+
+**Secondary finding:** `git checkout <path>` failed to revert the change,
+because `taxonomy.py` was newly added and not yet staged, so git had no
+version to restore. The file had to be repaired by hand.
+
+**Changed as a result:** Stage work before deliberately breaking something.
+An untracked file has no safety net, and the moment of wanting to undo an
+experiment is the worst moment to discover that.

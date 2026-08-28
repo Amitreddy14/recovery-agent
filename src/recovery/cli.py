@@ -146,5 +146,67 @@ def generate_command(
     )
 
 
+@app.command("diagnose")
+def diagnose_command(
+    params_path: Annotated[Path, typer.Option("--params")] = DEFAULT_OUTPUT,
+    n_cases: Annotated[int, typer.Option("--cases")] = 8000,
+    seed: Annotated[int, typer.Option("--seed")] = 42,
+) -> None:
+    """Score the degradation detector against ground truth and the naive rule."""
+    from recovery.calibration.models import WorldParameters
+    from recovery.diagnose.issuer_health import IssuerHealthModel, ThresholdHealthModel
+    from recovery.evaluate.diagnosis_eval import (
+        evaluate_health_models,
+        volume_stratified_report,
+    )
+    from recovery.world.generate import generate
+
+    params = WorldParameters.model_validate_json(params_path.read_text(encoding="utf-8"))
+    observable, oracle = generate(params, n_cases=n_cases, seed=seed)
+
+    prevalence = sum(o.issuer_degraded_at_failure for o in oracle.outcomes) / n_cases
+    console.print(f"True degradation prevalence: [bold]{prevalence:.2%}[/bold]\n")
+
+    scores, naive = evaluate_health_models(observable.features, oracle.outcomes)
+    table = Table(title="Degradation detection")
+    for col in ("Detector", "Precision", "Recall", "F1", "Fires", "Cost/case"):
+        table.add_column(col, justify="right" if col != "Detector" else "left")
+    for s in [*scores, naive]:
+        table.add_row(
+            s.name,
+            f"{s.precision:.3f}",
+            f"{s.recall:.3f}",
+            f"{s.f1:.3f}",
+            f"{s.positive_rate:.2%}",
+            f"{s.weighted_cost:.4f}",
+        )
+    console.print(table)
+
+    best = min(scores, key=lambda s: s.weighted_cost)
+    delta = (naive.weighted_cost - best.weighted_cost) / naive.weighted_cost
+    console.print(
+        f"Lowest expected cost: [bold]{best.name}[/bold] — "
+        f"{delta:.0%} below the fixed-threshold rule\n"
+    )
+
+    bayes = IssuerHealthModel(decision_threshold=best.threshold or 0.8).fit(observable.features)
+    report = volume_stratified_report(
+        observable.features, oracle.outcomes, bayes, ThresholdHealthModel()
+    )
+    strat = Table(title="By observation volume (where the rule breaks)")
+    for col in ("Volume", "n", "Bayes prec", "Bayes fires", "Rule prec", "Rule fires"):
+        strat.add_column(col, justify="right" if col != "Volume" else "left")
+    for bucket, v in report.items():
+        strat.add_row(
+            bucket,
+            str(int(v["n"])),
+            f"{v['bayes_precision']:.3f}",
+            f"{v['bayes_fire_rate']:.1%}",
+            f"{v['rule_precision']:.3f}",
+            f"{v['rule_fire_rate']:.1%}",
+        )
+    console.print(strat)
+
+
 if __name__ == "__main__":
     app()
