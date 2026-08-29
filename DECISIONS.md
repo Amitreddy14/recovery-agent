@@ -50,15 +50,11 @@ and fails the build on violation.
 evidence. A reviewer can verify this in thirty seconds without reading the
 model code.
 
-
-## ADR-0002 — Ground-truth outcomes are quarantined by CI, not by convention
-
 **Date:** Phase 0
 **Status:** Superseded by ADR-0011 (Phase 4). The contract described here
 forbade only `recovery.world.oracle`, which left `world.timeline` and
 `world.latent` reachable from decision code. Retained for the record.
 
----
 
 ## ADR-0003 — Money is integer paise, everywhere
 
@@ -373,6 +369,62 @@ is independent of covariates and the reported Qini figures stay unbiased. The
 cost is a smaller evaluation set, which is the right trade: a noisy unbiased
 estimate is usable, a precise biased one is not.
 
+**Status:** Closed in Phase 6 by ADR-0018. Cancellation is now priced as an
+explicit rupee cost rather than left to the ranking. At equal contact budget,
+sleeping dogs contacted fell from 1,451 (risk ranking) to 833, and mandate
+cancellations from 315 to 22.
+
+---
+
+## ADR-0018 — Mandate cancellation is priced in rupees, not ranked
+
+**Date:** Phase 6
+**Status:** Accepted. Closes INC-017.
+
+**Context.** INC-017 recorded that uplift targeting selected *more* sleeping
+dogs than risk ranking (9% against 3%). The learner finds the positive tail of
+the treatment-effect distribution and is largely blind to the negative one,
+because contact sensitivity has only a weak observable proxy.
+
+**Decision.** Rather than improve the ranking, add a second objective and
+subtract it in rupees:
+
+    EV(a) = p_recovery(a) x amount - cost(a) - p_cancel(a) x remaining_mandate_value
+
+**Reasoning.** A better ranking could not have fixed this. The damage a
+sleeping dog suffers is not a smaller recovery — it is a cancelled mandate,
+which forfeits every future debit. On a recovery-probability scale that
+damage is nearly invisible; on a rupee scale over a twelve-cycle horizon it
+dominates. A Rs 499 subscription carries roughly Rs 6,000 of remaining value,
+so a 5% cancellation risk costs more than the payment being chased is worth.
+
+Ranking also cannot express *declining to act at all*. It orders cases; it has
+no way to leave budget unspent. Expected value can return "none of these
+beat inaction", which is the behaviour a sleeping dog requires.
+
+**Result at 40,000 cases, equal contact budget (6,952 contacts):**
+
+    policy       net Rs        cancellations   sleeping dogs contacted
+    risk_topN    88,639,228              315                     1,451
+    uplift_ev   130,813,491               22                       833
+
+---
+
+## ADR-0019 — Deferral is a distinct verdict from denial
+
+**Date:** Phase 6
+**Status:** Accepted
+
+**Decision.** The compliance gate returns ALLOW, BLOCK or DEFER, and DEFER
+carries a `defer_until` timestamp.
+
+**Reasoning.** Two rules that both stop an action now are not the same rule.
+A revoked mandate can never be debited. A message at 01:30 IST is not
+forbidden, it is early. Collapsing them either sends messages at 2am or
+discards recoverable cases for a reason that expires in a few hours. The
+distinction also matters for the audit trail: "deferred to 09:00" and
+"blocked, customer on DND" are different answers to a regulator.
+
 ---
 
 ## Incidents
@@ -652,6 +704,17 @@ boundary, and one variance error where `Counter[Segment]` was assigned to
 `**kwargs`. `object` is never right there — it satisfies no concrete
 parameter type, so it produces one error per keyword the callee declares.
 
+**Fifth occurrence (Phase 6):** `economics.py` and three helpers in
+`test_compliance.py`, one phase after the standing rule was written. The
+rule was correct and was simply not applied.
+
+**Root cause of the recurrence:** the authoring environment cannot run the
+pydantic mypy plugin, so `dict[str, object]` passes there and fails
+downstream. A rule that depends on remembering it, in an environment that
+cannot enforce it, will keep being broken. The durable fix is that the
+receiving environment runs the gates before anything is committed — which is
+what has caught it every time.
+
 
 ### INC-012 — Verified the import contract by deliberately breaking it
 
@@ -891,3 +954,59 @@ submission. Two ADR-0014s tell a reader the record is not maintained
 carefully, which undermines every claim the log is supposed to support —
 including the evaluation-integrity ones that have no other evidence behind
 them.
+
+
+### INC-019 — An uplift model was the wrong estimator for cancellation risk
+
+**Phase:** 6
+**Symptom:** The cancellation model silently declined to fit. `p_cancel` was
+zero for every case, so the entire sleeping-dog correction was inert. The
+policy still ran and still produced plausible numbers — net Rs 127.8M against
+Rs 128.8M for doing nothing, i.e. *worse than inaction* — which is the only
+reason the failure was noticed.
+
+**Cause:** Cancellation was framed as an uplift problem, mirroring recovery.
+But a customer who is never contacted never cancels *because of* contact, so
+the control arm carries structurally zero events:
+
+    usable 9,998   treated 7,835   control 2,163
+    cancellations in treated arm: 198
+    cancellations in control arm: 0
+
+An uplift learner differences two arms. With one arm identically zero there
+is nothing to difference, and the guard against fitting a single-class arm
+correctly refused — silently, as designed.
+
+**Fix:** Replaced the uplift learner with a plain classifier on the treated
+arm. Where the control outcome is structurally zero,
+`P(cancel | contacted, x)` *is* the uplift, and estimating it directly uses
+all 198 events instead of discarding them.
+
+**Changed as a result:**
+- Symmetry of framing is not a reason to reuse an estimator. Recovery and
+  cancellation look like the same shape of problem and are not: one has a
+  genuine control arm, the other cannot have one.
+- The near-miss is the more important part. A silently inert correction
+  produced a policy that lost money against doing nothing, and it would have
+  passed unnoticed had the `do_nothing` baseline been absent from the
+  comparison. Every policy evaluation now carries `do_nothing` as a
+  mandatory row, because a recovery policy that cannot beat inaction is the
+  failure mode least likely to look like one.
+
+### INC-020 — The decision rationale named the action, not the rule
+
+**Phase:** 6
+**Symptom:** `test_rationale_names_the_blocking_rule` failed. The rationale
+read `send_payment_link scored above inaction but was gated
+(send_payment_link)`.
+
+**Cause:** The explanation collected the set of gated *actions* rather than
+the rule ids that gated them.
+
+**Fix:** Rationale now names the blocking or deferring rule, and distinguishes
+the two: `blocked by DND_REGISTRY` versus `deferred by CONTACT_HOURS`.
+
+**Changed as a result:** An audit trail that records what was blocked but not
+why is decoration. The test was written to assert the rule id appears, and
+it caught this on first run — worth noting because the original wording read
+perfectly well in English while conveying nothing an auditor could act on.
