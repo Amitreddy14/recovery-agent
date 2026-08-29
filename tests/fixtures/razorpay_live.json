@@ -1,0 +1,75 @@
+[
+  {
+    "op": "create_order",
+    "request": {
+      "amount_paise": 49900,
+      "receipt": "rec_79adb05788c5",
+      "notes": {
+        "case_id": "demo_e359b9ab"
+      }
+    },
+    "response": {
+      "amount": 49900,
+      "amount_due": 49900,
+      "amount_paid": 0,
+      "attempts": 0,
+      "created_at": 1788009586,
+      "currency": "INR",
+      "entity": "order",
+      "id": "order_TVbEfZHRnlDdzF",
+      "notes": {
+        "case_id": "demo_e359b9ab"
+      },
+      "offer_id": null,
+      "receipt": "rec_79adb05788c5",
+      "status": "created"
+    },
+    "error": null
+  },
+  {
+    "op": "create_payment_link",
+    "request": {
+      "amount_paise": 99900,
+      "reference_id": "demo_b6ae16ed",
+      "description": "Recovery demo 2",
+      "notes": {
+        "case_id": "demo_e359b9ab"
+      }
+    },
+    "response": {
+      "accept_partial": false,
+      "allow_full_payment": false,
+      "amount": 99900,
+      "amount_paid": 0,
+      "cancelled_at": 0,
+      "created_at": 1788009586,
+      "currency": "INR",
+      "customer": [],
+      "description": "Recovery demo 2",
+      "expire_by": 0,
+      "expired_at": 0,
+      "first_min_partial_amount": 0,
+      "id": "plink_TVbEg1cFmtH3nV",
+      "notes": {
+        "case_id": "demo_e359b9ab"
+      },
+      "notify": {
+        "email": false,
+        "sms": false,
+        "whatsapp": false
+      },
+      "payment_plan": false,
+      "payments": null,
+      "reference_id": "demo_b6ae16ed",
+      "reminder_enable": false,
+      "reminders": [],
+      "short_url": "https://rzp.io/rzp/4lwtZyuJ",
+      "status": "created",
+      "updated_at": 1788009586,
+      "upi_link": false,
+      "user_id": "",
+      "whatsapp_link": false
+    },
+    "error": null
+  }
+]
