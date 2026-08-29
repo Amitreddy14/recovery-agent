@@ -427,6 +427,103 @@ distinction also matters for the audit trail: "deferred to 09:00" and
 
 ---
 
+## ADR-0020 — Idempotency keys are deterministic and reserved before the call
+
+**Date:** Phase 7
+**Status:** Accepted
+
+**Context.** The defect this prevents: an executor retries a call it believes
+failed, when the call actually succeeded and only the response was lost. The
+customer is charged twice. This is caused by ordinary network behaviour, not
+by anything exotic.
+
+**Decision.** Two mechanisms, because either alone is insufficient.
+
+1. A key derived deterministically from `(case_id, action, attempt, amount)`,
+   passed to Razorpay as the order `receipt` so the provider itself rejects a
+   duplicate. Deterministic, not a fresh UUID per attempt — a random key would
+   make every retry look like a new charge, which is the bug rather than the
+   fix. The wall clock is excluded: two attempts on the same operation hours
+   apart are the same operation.
+2. A local SQLite ledger recording every key issued. The provider's guarantee
+   only applies once the request reaches it; the ledger catches duplicates
+   before the call and lets a crashed run resume without reissuing work.
+
+**Ordering.** The ledger row is written *before* the network call. A crash
+mid-flight then leaves an `in_flight` row, which is recoverable by
+reconciliation. The reverse ordering leaves no trace at all, and the operation
+silently repeats on restart.
+
+**Attempt counting** reads from the ledger rather than from case state, since
+in-memory state can be stale after a crash while the ledger records what
+actually reached the provider.
+
+---
+
+## ADR-0021 — Provider clients are record/replay, not live, in tests
+
+**Date:** Phase 7
+**Status:** Accepted
+
+**Context.** CI has no network and no credentials. A test suite calling the
+live API would either be skipped in CI, making it decorative, or would embed
+secrets, making it a liability.
+
+**Decision.** `RazorpayClient` is a protocol with three implementations:
+`LiveClient` (real test-mode SDK), `RecordingClient` (wraps live, writes
+fixtures), `ReplayClient` (serves fixtures, no network).
+
+**Reasoning.** Record once, replay forever. Tests then exercise real response
+shapes — including error shapes — without a network dependency. It also makes
+the error paths testable at all: provoking a genuine gateway timeout on demand
+is impractical, replaying a recorded one is trivial, and error handling that
+has never executed is not error handling.
+
+`LiveClient` refuses to construct on a key that does not begin `rzp_test_`.
+The check is cheap; the failure it prevents is not.
+
+---
+
+## ADR-0022 — Unmapped provider errors are never retried
+
+**Date:** Phase 7
+**Status:** Accepted
+
+**Decision.** Only error codes explicitly classified retriable are retried.
+Anything unrecognised is treated as permanent and escalated.
+
+**Reasoning.** The alternative — assume an unfamiliar failure is transient —
+is the reasoning that produces duplicate charges. A new error code shipped by
+the provider next quarter should surface as an escalation, not as a silent
+retry loop against an operation that may have already succeeded. Retrying a
+`BAD_REQUEST_ERROR` also cannot succeed and only delays the escalation.
+
+---
+
+## ADR-0023 — The LLM drafts; the system verifies
+
+**Date:** Phase 7
+**Status:** Accepted
+
+**Context.** The RBI pre-debit notification must state merchant name, amount,
+debit date and time, mandate reference, reason, and how to opt out. This is
+one of the three places an LLM is used in this project.
+
+**Decision.** A deterministic template produces a compliant message. The model
+is asked only to improve phrasing, and its output is then validated against
+the same required-field list from `configs/compliance/policy.yaml`. A draft
+missing any required field is discarded and the template is sent instead.
+
+**Reasoning.** A fluent notification missing its opt-out instruction is a
+compliance failure that reads perfectly well — exactly the class of error a
+language model produces and a human reviewer skims past. The validator does
+not care how the sentence reads. The model is never load-bearing: no API key,
+an API error, or a bad draft all fall back to the template silently, because
+a compliant plain message beats an elegant non-compliant one and there is no
+scenario where waiting for better copy justifies delaying a mandated notice.
+
+---
+
 ## Incidents
 
 > Running log of things that broke, what the symptom was, what the cause
@@ -1010,3 +1107,78 @@ the two: `blocked by DND_REGISTRY` versus `deferred by CONTACT_HOURS`.
 why is decoration. The test was written to assert the rule id appears, and
 it caught this on first run — worth noting because the original wording read
 perfectly well in English while conveying nothing an auditor could act on.
+
+
+### INC-021 — A validator silently ignored requirements it did not recognise
+
+**Phase:** 7
+**Symptom:** `test_compose_raises_when_template_diverges_from_policy` failed:
+adding `customer_grievance_contact` to the required-field list produced no
+error, and the notification was reported compliant.
+
+**Cause:** `validate()` was a chain of `elif field == "..."` branches. A field
+name matching none of them fell through the chain and was never appended to
+`missing`. The function therefore checked only the fields it already knew
+about and treated everything else as satisfied.
+
+**Why it matters more than it looks:** the required-field list lives in
+`configs/compliance/policy.yaml` precisely so a regulatory change can be made
+as a config edit (ADR-0004). With this bug, adding a field to that file would
+appear to tighten the rules while changing nothing — an unenforced
+requirement that looks enforced, which is worse than no requirement at all
+because it removes the reason to look.
+
+**Fix:** Rewrote as an explicit `dict[str, bool]` of checks. A field absent
+from that dict is reported missing. The validator now fails closed.
+
+**Changed as a result:** Validation driven by external configuration must fail
+closed on unrecognised entries. The test that caught this was written to
+assert the loud-failure behaviour rather than the happy path, which is the
+only reason it surfaced — a test asserting that a correct template passes
+would have gone green throughout.
+
+
+### INC-022 — A duplicate-reference rejection was classified as a failure
+
+**Phase:** 7
+**Found by:** a live test-mode call against a real Razorpay account. Not by
+the test suite, which was passing 166 tests at the time.
+
+**Symptom:** Re-creating a payment link with an existing `reference_id`
+raised `razorpay.errors.BadRequestError`. The error map classified it as
+`FailureReason.OTHER`, non-retriable, and the executor would have recorded
+the case as failed and escalated it to a human.
+
+**Cause:** "Duplicate reference" is provider-side idempotency working
+correctly — it means an earlier request with the same reference already
+succeeded. Razorpay returns a generic `BAD_REQUEST_ERROR` code for it, which
+at the code level is indistinguishable from a genuinely malformed request.
+Treating the two alike conflates "you already did this" with "your request was
+wrong": opposite meanings, opposite correct responses.
+
+The consequence would have been mild in money terms and severe in trust
+terms. No double charge — the provider prevented that, which was the point.
+But every successfully-deduplicated operation would have surfaced as a failed
+case in the audit trail, so the artifact meant to prove the system is bounded
+would have been reporting phantom failures.
+
+**Fix:**
+- Added `DuplicateOperationError`, detected on the provider's description
+  rather than its code, since the code is not specific enough.
+- The existing reference is parsed out of the description, so a duplicate
+  tells us *which* earlier operation it collides with rather than merely that
+  one exists.
+- The executor treats it as a successful, already-completed operation and
+  records the recovered reference. The reason is surfaced explicitly:
+  succeeding because of an earlier attempt is materially different from
+  succeeding because of this one, and the trail must say which.
+
+**Changed as a result:**
+- Seven regression tests added, using the exact response text the live account
+  returned rather than a shape I guessed at.
+- **The general lesson:** no unit test would have found this. The condition
+  only exists at the boundary with a real system holding real prior state,
+  and it took a second run against the same account to produce it. A test
+  suite that has never touched the provider is testing our model of the
+  provider, not the provider. Recording live fixtures (ADR-0021) is what
+  converts a finding like this into permanent coverage.
