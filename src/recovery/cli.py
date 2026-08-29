@@ -293,5 +293,96 @@ def uplift_command(
         console.print(seg)
 
 
+@app.command("audit")
+def audit_command(
+    case_id: Annotated[
+        str | None, typer.Option("--case", help="Show one case's full trail.")
+    ] = None,
+    db: Annotated[Path, typer.Option("--db")] = Path("data/generated/audit.sqlite3"),
+) -> None:
+    """Replay the audit trail from the event ledger."""
+    from recovery.ledger.replay import (
+        action_mix,
+        deferral_report,
+        denial_report,
+        reconcile,
+        replay,
+    )
+    from recovery.ledger.store import EventStore
+
+    if not db.exists():
+        console.print(f"[red]No ledger at {db}[/red]. Run a batch first.")
+        raise typer.Exit(code=2)
+
+    store = EventStore(db)
+    broken = store.verify_sequences()
+    if broken:
+        console.print(
+            f"[red]Sequence gaps in {len(broken)} cases[/red] — the trail has "
+            "holes and cannot be relied on."
+        )
+        raise typer.Exit(code=1)
+
+    if case_id:
+        events = store.for_case(case_id)
+        if not events:
+            console.print(f"[red]No events for {case_id}[/red]")
+            raise typer.Exit(code=2)
+        history = replay(case_id, events)
+        console.print(f"[bold]{case_id}[/bold]  state={history.state.value}\n")
+        for line in history.narrative():
+            console.print(f"  {line}")
+        if history.blocked_by:
+            console.print("\n[yellow]Denied actions[/yellow]")
+            for action, rule in history.blocked_by:
+                console.print(f"  {action.value} blocked by {rule}")
+        return
+
+    histories = [replay(c, store.for_case(c)) for c in store.case_ids()]
+    recovered = sum(h.recovered_paise for h in histories)
+    result = reconcile(recovered, histories)
+
+    console.print(
+        f"Events [bold]{store.count():,}[/bold] across "
+        f"[bold]{len(histories):,}[/bold] cases | sequence integrity "
+        f"[green]verified[/green]\n"
+    )
+
+    summary = Table(title="Ledger reconciliation")
+    summary.add_column("Metric")
+    summary.add_column("Value", justify="right")
+    summary.add_row("Cases recovered", f"{result.cases_recovered:,}")
+    summary.add_row("Recovered (ledger)", f"Rs {result.ledger_paise / 100:,.2f}")
+    summary.add_row(
+        "Reconciles exactly",
+        "[green]yes[/green]" if result.reconciles else "[red]NO[/red]",
+    )
+    console.print(summary)
+
+    denials = denial_report(histories)
+    deferrals = deferral_report(histories)
+    if denials or deferrals:
+        gates = Table(title="Compliance gate activity")
+        for col in ("Rule", "Blocked", "Deferred"):
+            gates.add_column(col, justify="right" if col != "Rule" else "left")
+        for rule in sorted(set(denials) | set(deferrals)):
+            gates.add_row(rule, str(denials.get(rule, 0)), str(deferrals.get(rule, 0)))
+        console.print(gates)
+    else:
+        console.print(
+            "[yellow]No denials recorded.[/yellow] A system that never reports "
+            "one is either unbounded or not checking."
+        )
+
+    mix = action_mix(histories)
+    if mix:
+        actions = Table(title="Actions executed")
+        actions.add_column("Action")
+        actions.add_column("Count", justify="right")
+        for action, count in mix.most_common():
+            actions.add_row(action.value, f"{count:,}")
+        console.print(actions)
+
+
 if __name__ == "__main__":
     app()

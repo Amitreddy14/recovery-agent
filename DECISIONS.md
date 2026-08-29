@@ -524,6 +524,78 @@ scenario where waiting for better copy justifies delaying a mandated notice.
 
 ---
 
+## ADR-0024 — The ledger is event-sourced; case state is derived, never stored
+
+**Date:** Phase 8
+**Status:** Accepted
+
+**Context.** The track requires an audit trail. The cheap version is a
+`status` column updated as a case progresses.
+
+**Decision.** An append-only event log. Case state is recomputed by folding
+the events, and `replay()` is the only way to obtain it.
+
+**Reasoning.** A mutable status field answers "where is this case now". It
+cannot answer "what did the agent consider, what did it reject, and on what
+evidence" — and those are the questions an auditor actually asks. A status
+field can also be corrected after the fact leaving no trace, which makes it
+worthless as evidence precisely when evidence matters.
+
+Deriving state also makes disagreement detectable. If `replay()` and the live
+system ever differ about a case, the log is right and the system has drifted.
+With a stored status there is nothing to compare against.
+
+**Enforcement.** Append-only is enforced by SQL triggers on UPDATE and DELETE,
+not only by the absence of methods on `EventStore`. A future contributor
+reaching for raw SQL hits a wall rather than a convention. Two tests assert
+this by attempting both operations through a direct `sqlite3` connection.
+
+**Cost accepted.** Reading a case costs a fold over its events rather than a
+row lookup. At this scale that is irrelevant, and the property is worth more
+than the microseconds.
+
+---
+
+## ADR-0025 — Reconciliation is exact equality, not a tolerance
+
+**Date:** Phase 8
+**Status:** Accepted
+
+**Decision.** `Reconciliation.reconciles` returns `difference_paise == 0`.
+
+**Reasoning.** The headline claim of this project is a rupee figure. If the
+reported total and the ledger sum disagree by any amount, the figure is
+wrong and the disagreement needs explaining rather than absorbing. A
+tolerance would quietly permit exactly the drift the check exists to catch.
+
+This is what integer paise (ADR-0003) was for. With floats the equality test
+would be unsound and a tolerance unavoidable, so the two decisions are one
+decision made in two places.
+
+---
+
+## ADR-0026 — The denial log is a first-class artifact
+
+**Date:** Phase 8
+**Status:** Accepted
+
+**Decision.** Every compliance verdict is persisted — passes, blocks and
+deferrals alike — and `recovery audit` reports blocked and deferred counts per
+rule as a headline table.
+
+**Reasoning.** Recording only the chosen action produces a trail that shows a
+well-behaved agent and proves nothing, because a system with no gates would
+produce the same trail. The denials are the evidence that the agent is
+bounded. A run reporting zero denials is either operating in a world with no
+rules or is not checking, and the CLI says so in those words rather than
+printing an empty table.
+
+Passing verdicts are kept for the same reason: an auditor asking "what else
+was checked" needs the passes, not just the failure.
+
+
+---
+
 ## Incidents
 
 > Running log of things that broke, what the symptom was, what the cause
