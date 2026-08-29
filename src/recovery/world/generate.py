@@ -23,6 +23,7 @@ from recovery.domain.enums import (
     MandateCategory,
     PaymentMethod,
 )
+from recovery.domain.observations import RealizedOutcome
 from recovery.world.cases import CaseFeatures, LoggedDecision, log_action
 from recovery.world.latent import observable_history, sample_latent
 from recovery.world.oracle.outcomes import (
@@ -65,6 +66,7 @@ class ObservableBatch:
 
     features: tuple[CaseFeatures, ...]
     logged: tuple[LoggedDecision, ...]
+    realized: tuple[RealizedOutcome, ...]
     seed: int
     params_provenance: str
 
@@ -127,6 +129,7 @@ def generate(
 
     features: list[CaseFeatures] = []
     logged: list[LoggedDecision] = []
+    realized: list[RealizedOutcome] = []
     outcomes: list[PotentialOutcomes] = []
 
     for i in range(n_cases):
@@ -215,7 +218,8 @@ def generate(
             issuer_volume_last_hour=volume_last_hour,
         )
         features.append(feature)
-        logged.append(log_action(feature, rng))
+        decision = log_action(feature, rng)
+        logged.append(decision)
         if is_upcoming:
             outcomes.append(
                 compute_upcoming_outcomes(
@@ -240,11 +244,25 @@ def generate(
                 )
             )
 
+    # Reveal Y(a) for the action actually taken. Everything else stays in the
+    # oracle. This is a projection of already-computed state, not a new draw,
+    # so the random stream is untouched (verified against the frozen batch).
+    for decision, outcome in zip(logged, outcomes, strict=True):
+        realized.append(
+            RealizedOutcome(
+                case_id=decision.case_id,
+                action=decision.action,
+                recovered=outcome.recovered[decision.action],
+                mandate_cancelled=outcome.mandate_cancelled[decision.action],
+            )
+        )
+
     provenance = f"{params.provenance.source_name} / {params.provenance.reporting_period}"
     return (
         ObservableBatch(
             features=tuple(features),
             logged=tuple(logged),
+            realized=tuple(realized),
             seed=seed,
             params_provenance=provenance,
         ),
@@ -275,6 +293,11 @@ def write_batch(
     with logged_path.open("w", encoding="utf-8") as fh:
         for d in observable.logged:
             fh.write(d.model_dump_json() + "\n")
+
+    realized_path = out_dir / "realized_outcomes.jsonl"
+    with realized_path.open("w", encoding="utf-8") as fh:
+        for r in observable.realized:
+            fh.write(r.model_dump_json() + "\n")
 
     oracle_path = oracle_dir / "potential_outcomes.jsonl"
     with oracle_path.open("w", encoding="utf-8") as fh:

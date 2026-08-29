@@ -302,6 +302,79 @@ quantity. It is registered as a Tier-2 assumption and swept in Phase 9.
 
 ---
 
+## ADR-0014 — Uplift learners implemented rather than imported
+
+**Date:** Phase 5
+**Status:** Accepted
+
+**Decision.** T-learner and X-learner written directly on LightGBM; Qini and
+AUUC written from the definition. `causalml` and `scikit-uplift` not used.
+
+**Reasoning.** Two specific reasons, not a preference for hand-rolling.
+
+The X-learner's final blend weights `tau0` and `tau1` by propensity. Library
+implementations estimate a propensity score from the data. We *know* the
+assignment probabilities exactly, because the logging policy records them
+(ADR-0005), so using an estimate would introduce error we do not have to
+accept. That substitution is a modification a library default would obscure.
+
+Qini is one formula whose entire content is a correction term. Writing it
+makes explicit why `Y_t(k) - Y_c(k)` alone is wrong: the arms are not the same
+size at depth k, so the control count must be rescaled by `N_t/N_c`, and
+without that an arm the logging policy favoured looks better purely for being
+larger.
+
+**Cost accepted.** Roughly 200 lines to write and test.
+
+---
+
+## ADR-0015 — Treatment is defined as the payment link alone
+
+**Date:** Phase 5
+**Status:** Accepted
+
+**Decision.** For the headline uplift comparison, "treated" means
+`SEND_PAYMENT_LINK`. Retries are excluded as cheap and silent;
+`PRE_DEBIT_NUDGE` is excluded despite also being a contact.
+
+**Reasoning.** Contact is the action worth targeting: it consumes a capped
+budget, is constrained by compliance rules, and is the only action that can
+make a case worse. Retries share none of those properties.
+
+The nudge is excluded for a stronger reason. A pre-debit notification cannot
+precede a debit that has already failed, so on the one-off payment population
+its potential outcome equals the do-nothing outcome exactly. Pooling it with
+payment links labelled thousands of untreated units as treated (INC-013). It
+is evaluated separately on the prevention population, where it is a genuine
+intervention.
+
+---
+
+## ADR-0016 — The randomised holdout is split, not used whole for evaluation
+
+**Date:** Phase 5
+**Status:** Accepted
+
+**Context.** The logging policy imitates a real merchant and therefore almost
+never chooses to do nothing. Training on logged data alone gave roughly 800
+control observations against 4,400 treated.
+
+**Decision.** Half the randomised holdout joins the training set; the other
+half is reserved for evaluation and never trained on.
+
+**Reasoning.** Uplift is `mu1 - mu0`, so the control arm's model is half the
+estimate. Fitting it on 800 rows made `mu0` the noisy term, and the difference
+inherited that noise — which is why risk ranking initially outscored the
+uplift learners (INC-014). Moving half the holdout into training raised
+control to ~2,200 and reversed the result.
+
+The reserved half remains uniformly randomised, so treatment assignment there
+is independent of covariates and the reported Qini figures stay unbiased. The
+cost is a smaller evaluation set, which is the right trade: a noisy unbiased
+estimate is usable, a precise biased one is not.
+
+---
+
 ## Incidents
 
 > Running log of things that broke, what the symptom was, what the cause
@@ -567,6 +640,19 @@ suppressions removed; none were replaced.
   signature silently detaches it from the error it was suppressing. That makes
   a wrapped signature carrying an ignore comment inherently fragile.
 - Test helpers accepting arbitrary overrides use `dict[str, Any]` by default.
+
+**Fourth occurrence (Phase 5):** `learners.py` passed hyperparameters as
+`dict[str, object]` into LightGBM constructors — 12 errors from one
+annotation. Also three `no-any-return` on NumPy operator results, which
+degrade to `Any` under strict mode and need an explicit dtype at the return
+boundary, and one variance error where `Counter[Segment]` was assigned to
+`dict[Segment, int]` (dict is invariant in its value type; `Mapping` is not).
+
+**Standing rule adopted:** `dict[str, Any]` for any mapping destined for
+`**kwargs`. `object` is never right there — it satisfies no concrete
+parameter type, so it produces one error per keyword the callee declares.
+
+
 ### INC-012 — Verified the import contract by deliberately breaking it
 
 **Phase:** 4
@@ -594,3 +680,214 @@ version to restore. The file had to be repaired by hand.
 **Changed as a result:** Stage work before deliberately breaking something.
 An untracked file has no safety net, and the moment of wanting to undo an
 experiment is the worst moment to discover that.
+
+
+### INC-013 — A null treatment was labelled as treatment
+
+**Phase:** 5
+**Symptom:** Both uplift learners scored *worse than random* on Qini. Oracle
+ranking peaked at 84% depth, when a ranking with access to true effects should
+concentrate them early.
+
+**Cause:** Treatment pooled `SEND_PAYMENT_LINK` and `PRE_DEBIT_NUDGE`. On
+one-off payment failures the nudge is a no-op by construction — a pre-debit
+notification cannot precede a debit that already happened — so its potential
+outcome equals the do-nothing outcome. Measured directly: 8,164 payment-failure
+cases, mean nudge uplift +0.000000, zero non-zero values. Roughly half the
+treated group had received no treatment at all.
+
+**Fix:** Treatment restricted to `SEND_PAYMENT_LINK` (ADR-0015).
+
+**Changed as a result:** When results are worse than random, the first
+hypothesis is a labelling error, not a modelling one. Checking the true effect
+of each pooled action on each population took one query and would have caught
+this before any model was fitted.
+
+### INC-014 — The control arm was starved and uplift inherited its noise
+
+**Phase:** 5
+**Symptom:** After fixing INC-013, risk ranking (Qini 0.0987) still beat the
+X-learner (0.0238), contradicting the project's central claim.
+
+**Cause:** Arm imbalance in training: 4,390 treated against 801 control.
+`NO_ACTION` is reachable in logged data only through 15% epsilon exploration
+spread over six actions, so the naive policy supplies almost no control data.
+Since uplift is `mu1 - mu0`, the estimate was dominated by the sparse arm's
+error.
+
+**Fix:** Split the randomised holdout, half to training (ADR-0016). Control
+rose to 2,166 and the ordering reversed: X-learner 0.2010, T-learner 0.1740,
+risk ranking -0.0101, random -0.0204.
+
+**Changed as a result:** Arm balance is now printed by the `uplift` command
+alongside the results, because a starved control arm is invisible in the
+metrics and produces a plausible-looking wrong answer rather than an error.
+The episode also confirmed the X-learner's reason for existing: it beats the
+T-learner precisely under the imbalance that caused this.
+
+### INC-015 — A test compared curve minima dominated by single observations
+
+**Phase:** 5
+**Symptom:** `test_risk_ranking_destroys_more_value` passed at 60,000 cases
+and failed at 40,000.
+
+**Cause:** It compared `QiniCurve.min_value`, the global minimum. At 1% depth
+a 2,000-case holdout has roughly twenty observations split across two arms, so
+the corrected difference swings on single events. The assertion was about
+early-depth sampling noise, not about either ranking.
+
+**Fix:** Added `WARMUP_DEPTH = 0.05` and `min_value_after_warmup`, and pointed
+`destroys_value` at it. The test now compares `uplift_at_30` — recovery at a
+realistic contact budget — which is both the operational question and stable.
+
+**Changed as a result:** Second occurrence of this pattern after INC-009.
+A claim about a curve must be made at a depth where the curve is supported by
+enough observations to mean anything, and the metric now enforces that rather
+than leaving it to whoever writes the assertion.
+
+---
+
+## ADR-0017 — Uplift results are reported across independent worlds, never one
+
+**Date:** Phase 5
+**Status:** Accepted
+
+**Context.** The Qini coefficient on a single evaluation holdout has a
+standard deviation comparable to the effect being measured. At 12,000 cases
+the unbiased holdout is roughly 400 rows, and the estimate ranges from -5.6
+to +27 across configurations that differ only by sample.
+
+**Decision.** The uplift command generates N independent worlds (default 5 at
+90,000 cases), reports Qini as mean +/- sd, and states how many worlds each
+ranking beat risk ranking in.
+
+**Reasoning.** A point estimate here is indistinguishable from noise, and
+reporting one would have meant publishing whichever number the first seed
+happened to produce. "Beats risk in 5/5 worlds" is a claim a reviewer can
+interrogate; "Qini 0.261" is not.
+
+**Cost accepted.** The command takes several minutes rather than seconds.
+
+---
+
+
+### INC-016 — An apparent negative result was sampling noise
+
+**Phase:** 5
+**Symptom:** Both uplift learners scored *negative* Qini — worse than random —
+on the first run at the default 12,000 cases:
+
+    uplift_x_learner   -2.74
+    uplift_t_learner   -5.57
+    risk_ranking       +2.08
+    random             +4.78
+
+Read at face value this says the entire uplift thesis is wrong.
+
+**Cause:** insufficient data, in a place that was easy to miss. Of 12,000
+generated cases only ~2,300 are contactable (logged action in {NO_ACTION,
+SEND_PAYMENT_LINK}); after the train/eval split the unbiased holdout was ~400
+rows. A Qini coefficient estimated on 400 rows with a control arm of a few
+hundred has a standard error larger than the effect. The learners were not
+failing — the measurement was.
+
+**Diagnosis:** Rather than adjusting the model, swept sample size first:
+
+    n_cases   x_learner   t_learner   risk    random   oracle
+     12,000      -2.743      -5.570   2.084    4.784   27.067
+     40,000      +0.289      -0.050  -0.005   -0.236    0.550
+     90,000      +0.173      +0.098   0.062   -0.121    0.435
+    160,000      +0.175      +0.179   0.166   -0.021    0.827
+
+The wild values at 12,000 and their collapse toward a stable ordering as n
+grows is the signature of a variance problem, not a bias one.
+
+**Confirmation:** five independent worlds at 90,000 cases:
+
+    oracle_uplift      0.772 +/- 0.248
+    uplift_x_learner   0.261 +/- 0.096   beats risk 5/5
+    uplift_t_learner   0.225 +/- 0.123   beats risk 5/5
+    risk_ranking       0.118 +/- 0.132
+    random             0.024 +/- 0.065
+
+**Fix:** Raised the default to 90,000 cases and made the command report mean
++/- sd across seeds with a win count (ADR-0017).
+
+**Changed as a result:**
+- A result whose sign flips with the seed is not a result. Effect estimates
+  are reported with dispersion, or not reported.
+- When a measurement contradicts a strong prior, sweep the measurement before
+  touching the model. The instinct to tune the learner here would have been
+  wrong twice: it would not have helped, and any improvement would have been
+  fitted to noise.
+- The cost of getting this wrong in the other direction is worse. Had the
+  first seed produced +0.4 instead of -2.7, the result would have looked like
+  a success and shipped unexamined.
+### INC-017 — Uplift targeting does not avoid sleeping dogs
+
+**Phase:** 5
+**Status:** Open limitation, not yet fixed. Recorded so it is not quietly
+omitted from the write-up.
+
+**Observation:** In the top 30% selected by each ranking:
+
+    segment        uplift    risk
+    persuadable    77%       40%
+    lost_cause      7%       52%
+    sleeping_dog    9%        3%
+
+Uplift targeting does what it was built for on the first two rows: it nearly
+doubles persuadable capture and cuts lost causes from 52% to 7%. Risk ranking
+spends over half its budget on customers who will never pay, which is the
+direct consequence of ranking by probability of failure rather than by effect
+of treatment.
+
+But it selects *more* sleeping dogs than risk ranking does, not fewer.
+
+**Interpretation:** The learner is finding the positive tail of the CATE
+distribution and is largely blind to the negative one. Sleeping dogs are
+customers with high baseline recovery and high contact sensitivity, and
+contact sensitivity has only a weak observable proxy (`contacts_last_30d`),
+so the negative-uplift population is close to indistinguishable from
+persuadables in feature space.
+
+**Not yet addressed.** Candidate directions for Phase 6: penalise predicted
+negative uplift asymmetrically in the decision engine rather than relying on
+the ranking; treat mandate cancellation as an explicit cost term rather than
+folding it into recovery probability.
+
+**Why recorded now:** the persuadable and lost-cause numbers are the strongest
+result in the project so far, and presenting them without this row would be
+selective reporting. The honest claim is that uplift targeting solves the
+lost-cause problem and does not yet solve the sleeping-dog problem.
+
+### INC-018 — Duplicate identifiers from an interrupted session
+
+**Phase:** 5
+**Status:** Resolved by renumbering. Recorded because the failure mode is
+structural, not careless.
+
+**Symptom:** `DECISIONS.md` contained two `## ADR-0014` headings, two
+`### INC-013`, two `### INC-014` and two `## Incidents` sections.
+
+**Cause:** Phase 5 was built across two working sessions. The second session
+began without the first session's entries in view, and allocated the next
+identifiers from the last numbers it could see — which were Phase 4's. Both
+blocks were internally consistent; the collision was only visible when the
+file was read end to end.
+
+**Fix:** Renumbered the second block to ADR-0017, INC-016 and INC-017,
+updated the cross-references, and removed the duplicated `## Incidents`
+header.
+
+**Changed as a result:** Before appending to the decision log, grep the
+existing identifiers rather than assuming the next number follows the last
+one written in the current session:
+
+    grep -n "^## ADR-\|^### INC-" DECISIONS.md | tail -5
+
+**Why this matters beyond tidiness:** the log is a primary artifact for this
+submission. Two ADR-0014s tell a reader the record is not maintained
+carefully, which undermines every claim the log is supposed to support —
+including the evaluation-integrity ones that have no other evidence behind
+them.

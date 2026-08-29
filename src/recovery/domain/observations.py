@@ -88,3 +88,19 @@ class LoggedDecision(BaseModel):
     propensity: float = Field(gt=0.0, le=1.0)
     is_holdout: bool
     policy_name: str
+
+
+class RealizedOutcome(BaseModel):
+    """What actually happened after the logged action was taken.
+
+    This *is* observable in production — a merchant knows whether the retry
+    worked. Only the counterfactuals are hidden, which is exactly the gap the
+    uplift model has to bridge: one outcome per case, six unobserved.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: str
+    action: ActionType
+    recovered: bool
+    mandate_cancelled: bool = False
