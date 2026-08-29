@@ -208,5 +208,90 @@ def diagnose_command(
     console.print(strat)
 
 
+@app.command("uplift")
+def uplift_command(
+    params_path: Annotated[Path, typer.Option("--params")] = DEFAULT_OUTPUT,
+    n_cases: Annotated[int, typer.Option("--cases")] = 90000,
+    seeds: Annotated[int, typer.Option("--seeds", help="Independent worlds.")] = 5,
+    first_seed: Annotated[int, typer.Option("--first-seed")] = 1,
+) -> None:
+    """Compare uplift targeting against risk targeting on the randomised holdout.
+
+    Reports across independent worlds rather than one. A single run at this
+    sample size has a Qini standard deviation comparable to the effect being
+    measured, so a point estimate is indistinguishable from noise — which is
+    how an earlier version produced an apparent negative result (INC-013).
+    """
+    import statistics
+    from collections.abc import Mapping
+
+    from recovery.calibration.models import WorldParameters
+    from recovery.evaluate.uplift_eval import evaluate_uplift, segment_capture
+    from recovery.world.generate import generate
+    from recovery.world.oracle.segments import Segment
+
+    params = WorldParameters.model_validate_json(params_path.read_text(encoding="utf-8"))
+    seed_list = list(range(first_seed, first_seed + seeds))
+
+    per_seed: dict[str, list[tuple[float, float, float]]] = {}
+    counts: dict[str, int] = {}
+    capture: Mapping[str, Mapping[Segment, int]] | None = None
+
+    with console.status(f"Fitting across {seeds} worlds of {n_cases:,} cases..."):
+        for seed in seed_list:
+            observable, oracle = generate(params, n_cases=n_cases, seed=seed)
+            results, counts = evaluate_uplift(
+                observable.features, observable.logged, observable.realized, oracle.outcomes
+            )
+            for r in results:
+                per_seed.setdefault(r.name, []).append(
+                    (r.coefficient, r.uplift_at_10, r.uplift_at_30)
+                )
+            if capture is None:
+                capture = segment_capture(
+                    observable.features, observable.logged, observable.realized, oracle.outcomes
+                )
+
+    console.print(
+        f"Contactable cases [bold]{counts['n_usable']:,}[/bold] per world | "
+        f"train {counts['n_train']:,} (control {counts['n_train_control']:,}) | "
+        f"unbiased eval {counts['n_eval']:,} | {seeds} worlds\n"
+    )
+
+    def stats(values: list[float]) -> tuple[float, float]:
+        return statistics.mean(values), (statistics.stdev(values) if len(values) > 1 else 0.0)
+
+    risk_qini = [v[0] for v in per_seed["risk_ranking"]]
+    oracle_mean, _ = stats([v[0] for v in per_seed["oracle_uplift"]])
+
+    table = Table(title=f"Targeting comparison ({seeds} independent worlds)")
+    for col in ("Ranking", "Qini (mean +/- sd)", "Uplift@30%", "% of oracle", "Beats risk"):
+        table.add_column(col, justify="right" if col != "Ranking" else "left")
+    ordered = sorted(per_seed.items(), key=lambda kv: -stats([v[0] for v in kv[1]])[0])
+    for name, values in ordered:
+        q_mean, q_sd = stats([v[0] for v in values])
+        u30, _ = stats([v[2] for v in values])
+        wins = sum(1 for v, r in zip([v[0] for v in values], risk_qini, strict=True) if v > r)
+        table.add_row(
+            name,
+            f"{q_mean:.3f} +/- {q_sd:.3f}",
+            f"{u30:+.4f}",
+            "—" if name == "oracle_uplift" else f"{q_mean / oracle_mean:.0%}",
+            "—" if name == "risk_ranking" else f"{wins}/{seeds}",
+        )
+    console.print(table)
+
+    if capture is not None:
+        total = sum(capture["uplift"].values())
+        seg = Table(title="Who each ranking selects (top 30%, first world)")
+        for col in ("Segment", "Uplift", "Risk"):
+            seg.add_column(col, justify="right" if col != "Segment" else "left")
+        for segment in Segment:
+            u, r_ = capture["uplift"][segment], capture["risk"][segment]
+            if u or r_:
+                seg.add_row(segment.value, f"{u} ({u / total:.0%})", f"{r_} ({r_ / total:.0%})")
+        console.print(seg)
+
+
 if __name__ == "__main__":
     app()
