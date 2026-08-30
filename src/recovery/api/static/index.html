@@ -57,8 +57,8 @@ header h1{font-size:19px}
 /* ---- grid ------------------------------------------------------------- */
 .grid{display:grid;grid-template-columns:minmax(420px,1fr) minmax(0,1.25fr);gap:var(--pad);flex:1;min-height:0}
 .rail{display:flex;flex-direction:column;gap:var(--pad);min-height:0;overflow:auto}
-.rail > .panel{flex:none}
-.rail > .panel .body{overflow:visible}
+.rail.evidence > .panel{flex:none}
+.rail.evidence > .panel .body{overflow:visible}
 
 /* ---- tables ----------------------------------------------------------- */
 table{width:100%;border-collapse:collapse;font-size:12px}
@@ -136,7 +136,7 @@ button:focus-visible,tr:focus-visible{outline:2px solid var(--gate);outline-offs
   </section>
 
   <div class="grid">
-    <div class="rail">
+    <div class="rail evidence">
       <section class="panel">
         <h2>Policy comparison &mdash; net of forfeited mandate value</h2>
         <div class="body flush"><table id="policies"></table></div>

@@ -62,6 +62,17 @@ def case(case_id: str) -> dict[str, Any]:
     raise HTTPException(status_code=404, detail=f"No case {case_id} in this snapshot")
 
 
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    """Liveness only.
+
+    Deliberately does not read the snapshot. A health check that deserialises
+    567KB every ten seconds is a load generator, and it buries the request log
+    under identical lines.
+    """
+    return {"status": "ok"}
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")

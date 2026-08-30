@@ -718,6 +718,32 @@ Only mandate value actively destroyed is coloured as loss.
 
 ---
 
+## ADR-0031 — The image builds the snapshot; the container only serves it
+
+**Date:** Phase 11
+**Status:** Accepted
+
+**Context.** `docker compose up` has to produce a working console. The
+snapshot takes roughly thirty seconds to build.
+
+**Decision.** The snapshot is built during `docker build`, not at container
+start.
+
+**Reasoning.** A reviewer running one command should get a screen, not a
+progress bar. It also makes the image build prove that the *whole* pipeline
+runs in the container — calibration, generation, model fitting, compliance
+gating — rather than only the web layer. An image that starts successfully but
+cannot fit a model is a broken image that looks fine until someone rebuilds.
+
+**Single stage.** There is no frontend build to isolate (ADR-0029), so a
+multi-stage image would add complexity without removing anything from the
+final layer.
+
+**One non-obvious dependency.** `libgomp1` is installed explicitly. Without
+it LightGBM imports successfully and fails on the first fit, which is a
+confusing way to discover a missing system library.
+
+---
 
 ## Incidents
 
@@ -1561,3 +1587,33 @@ Also worth recording that the contract earned its keep here for the second
 time (ADR-0011 was the first). Both times it caught something a reviewer
 would have had to trace by hand, and both times the violating code looked
 perfectly reasonable in isolation.
+
+### INC-027 — The README described a project that no longer existed
+
+**Phase:** 11
+**Status:** Fixed.
+
+**Symptom:** The README was substantially the one written in Phase 1. It
+described three theses as intentions, contained no measured figure, and
+listed a stack including React and Tailwind that had since been deliberately
+rejected (ADR-0029). Every number a reader would want was in `DECISIONS.md`
+instead — a 1,300-line file nobody opens first.
+
+**Why it mattered:** for most reviewers the README is the only artifact they
+read in full. A README describing intentions while the repo contains results
+inverts the impression: it reads as a project that planned more than it
+finished, when the opposite was true.
+
+**Cause:** it was written before there was anything to report and never
+revisited, because every phase had a more interesting task in it than
+rewriting prose.
+
+**Fix:** rewritten around measured results, with the reproducing script named
+beside each claim, and a "what is not finished" section carrying INC-023 and
+INC-017 rather than leaving them buried in the log.
+
+**Changed as a result:** the README now states figures that only exist because
+a script produced them, so it cannot silently drift the way it did — a stale
+number is a script someone can run to contradict it. Documentation claiming
+capability is unfalsifiable; documentation quoting a reproducible measurement
+is not.
