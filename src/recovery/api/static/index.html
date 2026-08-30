@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recovery console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F2F3F0; --card:#FFFFFF; --ink:#14181A; --muted:#6B7570;
+  --rule:#DCDED8; --rule-strong:#C2C5BC;
+  --credit:#1F6F5C; --forfeit:#A33A2B; --gate:#5B4B8A; --idle:#9AA29B;
+  --pad:16px; --radius:3px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--paper); color:var(--ink);
+  font:400 13px/1.45 "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.display{font-family:Archivo,system-ui,sans-serif;font-weight:600;letter-spacing:-0.01em}
+.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+
+/* ---- shell ------------------------------------------------------------ */
+.shell{display:flex;flex-direction:column;height:100vh;max-width:1680px;margin:0 auto;padding:var(--pad);gap:var(--pad)}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:24px;flex-wrap:wrap}
+header h1{font-size:19px}
+.meta{color:var(--muted);font-size:11px;display:flex;gap:18px;flex-wrap:wrap}
+.meta b{font-weight:500;color:var(--ink)}
+
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:var(--radius);display:flex;flex-direction:column;min-height:0}
+.panel > h2{
+  font-size:10px;letter-spacing:0.09em;text-transform:uppercase;color:var(--muted);
+  padding:9px 12px;border-bottom:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;font-weight:600;
+  display:flex;justify-content:space-between;align-items:center;gap:12px;flex:none;
+}
+.panel .body{padding:12px;overflow:auto;min-height:0}
+.panel .body.flush{padding:0}
+
+/* ---- signature: the reconciliation strip ------------------------------ */
+.recon{flex:none}
+.recon .body{padding:14px 16px 16px}
+.strip{display:flex;height:34px;border-radius:2px;overflow:hidden;border:1px solid var(--rule-strong)}
+.strip span{display:block;transition:filter .15s}
+.strip span:hover{filter:brightness(1.12)}
+.legend{display:flex;gap:22px;flex-wrap:wrap;margin-top:12px;font-size:11px}
+.legend div{display:flex;align-items:baseline;gap:7px}
+.swatch{width:9px;height:9px;border-radius:1px;flex:none;transform:translateY(1px)}
+.legend .amt{font-weight:600}
+.legend .lbl{color:var(--muted)}
+.balance{margin-top:12px;padding-top:11px;border-top:1px dashed var(--rule);font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:baseline}
+.tick{color:var(--credit);font-weight:600}
+
+/* ---- grid ------------------------------------------------------------- */
+.grid{display:grid;grid-template-columns:minmax(420px,1fr) minmax(0,1.25fr);gap:var(--pad);flex:1;min-height:0}
+.rail{display:flex;flex-direction:column;gap:var(--pad);min-height:0;overflow:auto}
+.rail > .panel{flex:none}
+.rail > .panel .body{overflow:visible}
+
+/* ---- tables ----------------------------------------------------------- */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{
+  text-align:left;font-weight:600;color:var(--muted);font-size:10px;letter-spacing:0.06em;
+  text-transform:uppercase;padding:7px 10px;border-bottom:1px solid var(--rule);
+  position:sticky;top:0;background:var(--card);z-index:1;
+}
+th.num,td.num{text-align:right}
+td{padding:6px 10px;border-bottom:1px solid var(--rule)}
+tbody tr:last-child td{border-bottom:none}
+tr.ours td{background:#F0F6F3;font-weight:600}
+tr.ceiling td{color:var(--muted);font-style:italic}
+tr.pick{cursor:pointer}
+tr.pick:hover td{background:#F5F6F2}
+tr.pick[aria-selected="true"] td{background:#EDEAF4;box-shadow:inset 2px 0 0 var(--gate)}
+
+.bar{height:5px;border-radius:1px;background:var(--rule);position:relative;margin-top:4px}
+.bar i{display:block;height:100%;border-radius:1px}
+
+.tag{
+  display:inline-block;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:600;
+  letter-spacing:0.03em;border:1px solid transparent;
+}
+.tag.no_action{color:var(--muted);border-color:var(--rule-strong)}
+.tag.blocked{color:var(--gate);border-color:#CFC7E4;background:#F4F1FA}
+.tag.persuadable{color:var(--credit);border-color:#BEDCD3;background:#EFF6F4}
+.tag.sleeping_dog{color:var(--forfeit);border-color:#E8C6BF;background:#FBF1EF}
+.tag.lost_cause,.tag.indifferent,.tag.sure_thing{color:var(--muted);border-color:var(--rule-strong)}
+.tag.act{color:var(--credit);border-color:#BEDCD3;background:#EFF6F4}
+
+/* ---- drill-down ------------------------------------------------------- */
+.detail{flex:none;max-height:44%}
+.detail .body{padding:0}
+.empty{padding:22px 14px;color:var(--muted);font-size:12px}
+.dsec{padding:11px 14px;border-bottom:1px solid var(--rule)}
+.dsec:last-child{border-bottom:none}
+.dsec h3{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;font-family:"IBM Plex Mono",monospace}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:12px}
+.kv dt{color:var(--muted)}
+.evidence li{margin-left:15px;font-size:12px;padding:1px 0}
+.evidence li.flag{color:var(--forfeit)}
+.rationale{background:var(--paper);border-left:2px solid var(--gate);padding:8px 11px;font-size:12px;border-radius:0 2px 2px 0}
+.blockline{color:var(--gate);font-weight:600;font-size:12px}
+
+.filters{display:flex;gap:5px;flex-wrap:wrap}
+.filters button{
+  font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:0.04em;text-transform:uppercase;
+  padding:5px 8px;border:1px solid var(--rule-strong);background:var(--card);color:var(--muted);
+  border-radius:2px;cursor:pointer;
+}
+.filters button:hover{border-color:var(--ink);color:var(--ink)}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button:focus-visible,tr:focus-visible{outline:2px solid var(--gate);outline-offset:1px}
+.scroll{overflow:auto;min-height:0;flex:1}
+.err{padding:20px;color:var(--forfeit)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:1080px){.grid{grid-template-columns:1fr}.detail{max-height:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <h1>Revenue recovery &mdash; run console</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section class="panel recon">
+    <h2>Reconciliation <span id="reconMeta"></span></h2>
+    <div class="body">
+      <div class="strip" id="strip"></div>
+      <div class="legend" id="legend"></div>
+      <div class="balance" id="balance"></div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <div class="rail">
+      <section class="panel">
+        <h2>Policy comparison &mdash; net of forfeited mandate value</h2>
+        <div class="body flush"><table id="policies"></table></div>
+      </section>
+      <section class="panel">
+        <h2>Who each ranking contacts</h2>
+        <div class="body flush"><table id="segments"></table></div>
+      </section>
+      <section class="panel">
+        <h2>Compliance gate activity</h2>
+        <div class="body flush"><table id="gates"></table></div>
+      </section>
+    </div>
+
+    <div class="rail" style="overflow:hidden">
+      <section class="panel" style="flex:1">
+        <h2>
+          <span>Cases <span id="caseCount" style="color:var(--ink)"></span></span>
+          <span class="filters" id="filters"></span>
+        </h2>
+        <div class="scroll"><table id="cases"></table></div>
+      </section>
+      <section class="panel detail">
+        <h2>Decision detail</h2>
+        <div class="body" id="detail"><div class="empty">Select a case to see its diagnosis, every action scored, and every gate verdict.</div></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const R = p => (p/100).toLocaleString('en-IN',{maximumFractionDigits:0});
+const RP = p => '\u20B9' + R(p);
+const PCT = x => (x*100).toFixed(0) + '%';
+const el = (t,c,h) => { const n=document.createElement(t); if(c)n.className=c; if(h!==undefined)n.innerHTML=h; return n; };
+
+let DATA = null, filter = 'all', selected = null;
+
+fetch('/api/snapshot').then(r => {
+  if(!r.ok) throw new Error('No snapshot yet. Build one with: python -m recovery.cli console --build');
+  return r.json();
+}).then(d => { DATA = d; render(); })
+  .catch(e => { document.querySelector('.shell').innerHTML =
+    '<div class="err">' + e.message + '</div>'; });
+
+function render(){
+  renderMeta(); renderRecon(); renderPolicies(); renderSegments();
+  renderGates(); renderFilters(); renderCases();
+}
+
+function renderMeta(){
+  const r = DATA.run;
+  document.getElementById('meta').innerHTML =
+    `<span>seed <b>${r.seed}</b></span>` +
+    `<span>cases <b>${r.n_cases.toLocaleString('en-IN')}</b></span>` +
+    `<span>policy <b>${r.policy_version}</b></span>` +
+    `<span>calibrated from <b>${r.calibration}</b></span>`;
+}
+
+/* Signature element: money at risk, decomposed. The widths are the actual
+   paise proportions, so the strip is the reconciliation rather than an
+   illustration of it. */
+function renderRecon(){
+  const c = DATA.reconciliation, total = c.at_risk_paise;
+  const parts = [
+    ['Recovered', c.recovered_paise, 'var(--credit)'],
+    ['Forfeited to cancellation', c.forfeited_paise, 'var(--forfeit)'],
+    ['Left unrecovered', c.unrecovered_paise - c.forfeited_paise, 'var(--idle)'],
+  ];
+  document.getElementById('strip').innerHTML = parts.map(([n,v,col]) =>
+    `<span style="width:${Math.max(0,(v/total)*100)}%;background:${col}" title="${n}: ${RP(v)}"></span>`).join('');
+  document.getElementById('legend').innerHTML = parts.map(([n,v,col]) =>
+    `<div><span class="swatch" style="background:${col}"></span>` +
+    `<span class="amt">${RP(v)}</span><span class="lbl">${n}</span></div>`).join('');
+  document.getElementById('reconMeta').innerHTML =
+    `<span style="color:var(--muted);text-transform:none;letter-spacing:0">` +
+    `${c.contacts.toLocaleString('en-IN')} contacts &middot; ` +
+    `${c.attempts.toLocaleString('en-IN')} attempts &middot; ` +
+    `${c.mandates_cancelled} mandates cancelled</span>`;
+  document.getElementById('balance').innerHTML =
+    `<span class="tick">${c.balances ? 'BALANCED' : 'DOES NOT BALANCE'}</span>` +
+    `<span>recovered + unrecovered = ${c.at_risk_paise.toLocaleString('en-IN')} paise at risk, exactly. ` +
+    `Integer paise throughout, so this is equality and not a tolerance.</span>`;
+}
+
+function renderPolicies(){
+  const t = document.getElementById('policies');
+  t.innerHTML = '<thead><tr><th>Policy</th><th class="num">Recovered</th>' +
+    '<th class="num">Forfeited</th><th class="num">Net</th>' +
+    '<th class="num">Cancelled</th></tr></thead>';
+  const b = el('tbody');
+  DATA.policies.forEach(p => {
+    const tr = el('tr', p.is_ours ? 'ours' : p.is_ceiling ? 'ceiling' : '');
+    tr.innerHTML =
+      `<td>${p.name}${p.is_ours ? ' &larr;' : ''}</td>` +
+      `<td class="num">${RP(p.recovered_paise)}</td>` +
+      `<td class="num" style="color:${p.forfeited_paise ? 'var(--forfeit)' : 'var(--muted)'}">${RP(p.forfeited_paise)}</td>` +
+      `<td class="num">${RP(p.net_paise)}<div class="bar"><i style="width:${Math.max(0,p.share_of_ceiling*100)}%;background:${p.is_ours?'var(--credit)':'var(--rule-strong)'}"></i></div></td>` +
+      `<td class="num" style="color:${p.cancelled ? 'var(--forfeit)' : 'var(--muted)'}">${p.cancelled}</td>`;
+    b.appendChild(tr);
+  });
+  t.appendChild(b);
+}
+
+function renderSegments(){
+  const t = document.getElementById('segments');
+  t.innerHTML = '<thead><tr><th>Segment</th><th class="num">Uplift + EV</th>' +
+    '<th class="num">Risk ranking</th></tr></thead>';
+  const b = el('tbody');
+  DATA.segments.forEach(s => {
+    const tr = el('tr');
+    const good = s.segment === 'persuadable';
+    const bad = s.segment === 'lost_cause' || s.segment === 'sleeping_dog';
+    const col = good ? 'var(--credit)' : bad ? 'var(--forfeit)' : 'var(--muted)';
+    tr.innerHTML =
+      `<td><span class="tag ${s.segment}">${s.segment.replace('_',' ')}</span></td>` +
+      `<td class="num" style="color:${col}">${PCT(s.ours_share)}<span style="color:var(--muted)"> (${s.ours})</span></td>` +
+      `<td class="num" style="color:${col}">${PCT(s.risk_share)}<span style="color:var(--muted)"> (${s.risk})</span></td>`;
+    b.appendChild(tr);
+  });
+  t.appendChild(b);
+}
+
+function renderGates(){
+  const t = document.getElementById('gates');
+  if(!DATA.gates.length){
+    t.outerHTML = '<div class="empty">No denials recorded. A run that never ' +
+      'reports one is either unbounded or not checking.</div>';
+    return;
+  }
+  t.innerHTML = '<thead><tr><th>Rule</th><th class="num">Blocked</th>' +
+    '<th class="num">Deferred</th><th class="num">Passed</th></tr></thead>';
+  const b = el('tbody');
+  DATA.gates.forEach(g => {
+    const tr = el('tr');
+    tr.innerHTML = `<td>${g.rule}</td>` +
+      `<td class="num" style="color:var(--gate);font-weight:600">${g.blocked.toLocaleString('en-IN')}</td>` +
+      `<td class="num">${g.deferred.toLocaleString('en-IN')}</td>` +
+      `<td class="num" style="color:var(--muted)">${g.passed.toLocaleString('en-IN')}</td>`;
+    b.appendChild(tr);
+  });
+  t.appendChild(b);
+}
+
+const FILTERS = {
+  all: () => true,
+  blocked: c => Object.keys(c.blocked).length > 0,
+  declined: c => c.action === 'no_action',
+  'sleeping dogs': c => c.segment === 'sleeping_dog',
+  degraded: c => c.issuer_degraded,
+};
+
+function renderFilters(){
+  const wrap = document.getElementById('filters');
+  wrap.innerHTML = '';
+  Object.keys(FILTERS).forEach(name => {
+    const b = el('button', null, name);
+    b.setAttribute('aria-pressed', String(filter === name));
+    b.onclick = () => { filter = name; renderFilters(); renderCases(); };
+    wrap.appendChild(b);
+  });
+}
+
+function renderCases(){
+  const rows = DATA.cases.filter(FILTERS[filter]);
+  document.getElementById('caseCount').textContent =
+    `${rows.length} of ${DATA.cases.length} shown`;
+  const t = document.getElementById('cases');
+  t.innerHTML = '<thead><tr><th>Case</th><th class="num">Amount</th>' +
+    '<th>Reason</th><th>Segment</th><th>Decision</th></tr></thead>';
+  const b = el('tbody');
+  rows.forEach(c => {
+    const tr = el('tr','pick');
+    tr.tabIndex = 0;
+    tr.setAttribute('aria-selected', String(selected === c.case_id));
+    const blocked = Object.keys(c.blocked).length;
+    tr.innerHTML =
+      `<td>${c.case_id.replace(/^case_\d+_/,'')}</td>` +
+      `<td class="num">${RP(c.amount_paise)}</td>` +
+      `<td>${c.reason}${c.issuer_degraded ? ' <span class="tag blocked">degraded</span>' : ''}</td>` +
+      `<td><span class="tag ${c.segment}">${c.segment.replace('_',' ')}</span></td>` +
+      `<td><span class="tag ${c.action === 'no_action' ? 'no_action' : 'act'}">${c.action.replace(/_/g,' ')}</span>` +
+        (blocked ? ` <span class="tag blocked">${blocked} gated</span>` : '') + `</td>`;
+    const open = () => { selected = c.case_id; renderCases(); renderDetail(c); };
+    tr.onclick = open;
+    tr.onkeydown = e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); } };
+    b.appendChild(tr);
+  });
+  t.appendChild(b);
+}
+
+function renderDetail(c){
+  const d = document.getElementById('detail');
+  const blocks = Object.entries(c.blocked);
+  d.innerHTML =
+    `<div class="dsec"><h3>Diagnosis</h3><dl class="kv">` +
+      `<dt>root cause</dt><dd>${c.root_cause} &middot; confidence ${c.confidence.toFixed(2)}</dd>` +
+      `<dt>issuer</dt><dd>${c.issuer}${c.issuer_degraded ? ' &mdash; <b style="color:var(--forfeit)">degraded at failure</b>' : ''}</dd>` +
+      `<dt>outcome</dt><dd>${c.would_recover ? 'this action recovers the payment' : 'not recovered under this action'}</dd>` +
+    `</dl><ul class="evidence" style="margin-top:7px">` +
+      c.evidence.map(e => `<li class="${e.includes('INCONSISTENT') || e.includes('degraded') ? 'flag' : ''}">${e}</li>`).join('') +
+    `</ul></div>` +
+
+    `<div class="dsec"><h3>Actions considered</h3><table>` +
+      `<thead><tr><th>Action</th><th class="num">P(recover)</th><th class="num">Uplift</th><th class="num">Expected value</th></tr></thead><tbody>` +
+      c.scores.map(s => `<tr${s.chosen ? ' class="ours"' : ''}>` +
+        `<td>${s.action.replace(/_/g,' ')}${s.chosen ? ' &larr;' : ''}</td>` +
+        `<td class="num">${s.p_recovery.toFixed(3)}</td>` +
+        `<td class="num" style="color:${s.uplift < 0 ? 'var(--forfeit)' : 'inherit'}">${s.uplift >= 0 ? '+' : ''}${s.uplift.toFixed(3)}</td>` +
+        `<td class="num">${RP(s.ev_paise)}</td></tr>`).join('') +
+      `</tbody></table></div>` +
+
+    (blocks.length ? `<div class="dsec"><h3>Refused by the gate</h3>` +
+      blocks.map(([a,rules]) => `<div class="blockline">${a.replace(/_/g,' ')} &mdash; ${rules.join(', ')}</div>`).join('') +
+      `</div>` : '') +
+
+    `<div class="dsec"><h3>Rationale</h3><div class="rationale">${c.rationale}</div></div>`;
+}
+</script>
+</body>
+</html>

@@ -24,7 +24,7 @@ Four policies are compared:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from recovery.domain.enums import ActionType
@@ -104,7 +104,7 @@ def _apply(
 
 
 def evaluate_policies(
-    policies: dict[str, Sequence[ActionType]],
+    policies: Mapping[str, Sequence[ActionType]],
     outcomes: Sequence[PotentialOutcomes],
     amounts_paise: Sequence[int],
     mandate_values_paise: Sequence[int],

@@ -384,5 +384,47 @@ def audit_command(
         console.print(actions)
 
 
+@app.command("console")
+def console_command(
+    build: Annotated[
+        bool, typer.Option("--build", help="Run a batch and freeze the snapshot.")
+    ] = False,
+    serve: Annotated[bool, typer.Option("--serve", help="Serve the console.")] = False,
+    n_cases: Annotated[int, typer.Option("--cases")] = 20000,
+    seed: Annotated[int, typer.Option("--seed")] = 42,
+    port: Annotated[int, typer.Option("--port")] = 8000,
+) -> None:
+    """Build the console snapshot, serve the console, or both."""
+    from recovery.evaluate.snapshot import build_snapshot, write_snapshot
+    from recovery.paths import CONSOLE_SNAPSHOT
+
+    if not build and not serve:
+        console.print("Pass --build, --serve, or both.")
+        raise typer.Exit(code=2)
+
+    if build:
+        with console.status(f"Running {n_cases:,} cases..."):
+            data = build_snapshot(n_cases=n_cases, seed=seed)
+            path = write_snapshot(data)
+        r = data["reconciliation"]
+        console.print(
+            f"[green]Wrote[/green] {path}\n"
+            f"  at risk   Rs {r['at_risk_paise'] / 100:>14,.0f}\n"
+            f"  recovered Rs {r['recovered_paise'] / 100:>14,.0f}\n"
+            f"  forfeited Rs {r['forfeited_paise'] / 100:>14,.0f}\n"
+            f"  net       Rs {r['net_paise'] / 100:>14,.0f}\n"
+            f"  balances  {'yes' if r['balances'] else 'NO'}"
+        )
+
+    if serve:
+        import uvicorn
+
+        if not CONSOLE_SNAPSHOT.exists():
+            console.print("[red]No snapshot.[/red] Run with --build first.")
+            raise typer.Exit(code=2)
+        console.print(f"Console on [bold]http://127.0.0.1:{port}[/bold]")
+        uvicorn.run("recovery.api.app:app", host="127.0.0.1", port=port, log_level="warning")
+
+
 if __name__ == "__main__":
     app()
