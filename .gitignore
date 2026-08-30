@@ -18,3 +18,6 @@ data/generated/*
 node_modules/
 dashboard/dist/
 .DS_Store
+data/generated/*
+!data/generated/.gitkeep
+!data/generated/demo_audit.sqlite3

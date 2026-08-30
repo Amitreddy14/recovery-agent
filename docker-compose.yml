@@ -1,0 +1,19 @@
+services:
+  console:
+    build: .
+    image: recovery-agent:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # Test-mode keys only. The client refuses anything that is not
+      # rzp_test_ prefixed, so a live key here fails at startup rather than
+      # moving money.
+      RAZORPAY_KEY_ID: "${RAZORPAY_KEY_ID:-}"
+      RAZORPAY_KEY_SECRET: "${RAZORPAY_KEY_SECRET:-}"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
