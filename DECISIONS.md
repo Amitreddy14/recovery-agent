@@ -408,6 +408,20 @@ beat inaction", which is the behaviour a sleeping dog requires.
     risk_topN    88,639,228              315                     1,451
     uplift_ev   130,813,491               22                       833
 
+
+**Corrected in Phase 10.** The figures above used an inverted risk baseline
+(INC-025). Re-run with `rank_by_risk` at 40,000 cases:
+
+    policy        recovered   cancel loss        net    cancels   dogs
+    do_nothing  128,802,859            0  128,802,859        0      0
+    blind_retry 151,595,555   45,550,015  106,029,698      323   2441
+    risk_topN   131,238,808   13,363,779  117,872,596      106    133
+    uplift_ev   136,760,437    5,935,562  130,813,491       22    833
+    oracle      183,463,827            0  183,450,393        0   1304
+
+Our advantage over risk ranking narrows from Rs 42.2M to Rs 12.9M. The claim
+survives; it was overstated by a factor of three.
+
 ---
 
 ## ADR-0019 — Deferral is a distinct verdict from denial
@@ -655,6 +669,55 @@ any claim, which at ~16 seconds per configuration is the difference between a
 sweep that runs and one that does not.
 
 ---
+
+## ADR-0029 — The console has no build step
+
+**Date:** Phase 10
+**Status:** Accepted
+
+**Context.** The stack table in Phase 0 named React, Vite and Tailwind for
+the dashboard.
+
+**Decision.** A single hand-written HTML page with hand-rolled SVG bars,
+served by FastAPI. No node, no bundler, no `node_modules`.
+
+**Reasoning.** Same judgement as ADR-0001, applied to the frontend: do not
+adopt a framework whose weight exceeds the problem. The console has six
+panels, two chart shapes, no routing and no client state beyond a selected
+row. A build toolchain would add roughly 200MB of dependencies, a build step,
+and a class of failure ("does npm install work on the reviewer's machine") to
+a repo whose stated goal is that it actually runs. It would also take the
+Docker image from ~200MB to ~1GB.
+
+**Rejected alternative.** React + Vite + Tailwind, as originally planned.
+Faster to reach a conventional-looking result, heavier to run and to justify.
+
+**Cost accepted.** Hand-written DOM updates rather than declarative
+rendering. At this size that is a few dozen lines.
+
+---
+
+## ADR-0030 — Denials are violet, not red
+
+**Date:** Phase 10
+**Status:** Accepted
+
+**Decision.** The console's palette assigns a distinct colour to compliance
+blocks, separate from both the money-recovered and money-lost colours, and
+deliberately not red.
+
+**Reasoning.** Colour is an argument. Red says something went wrong; a
+compliance block is the system working exactly as designed, and the denial
+log is evidence rather than an error report (ADR-0026). Painting 4,212 AFA
+refusals red would tell a reviewer at a glance that the run was broken, which
+is the opposite of the truth.
+
+The same logic drives the reconciliation strip: money left unrecovered is
+neutral grey rather than red, because most of it was never recoverable.
+Only mandate value actively destroyed is coloured as loss.
+
+---
+
 
 ## Incidents
 
@@ -944,6 +1007,12 @@ cannot enforce it, will keep being broken. The durable fix is that the
 receiving environment runs the gates before anything is committed — which is
 what has caught it every time.
 
+**Phase 10:** two variance errors — `dict` invariant in its value type where
+`Mapping` was needed, and `list[Any]` parameters receiving the generator's
+immutable tuples. Both were parameters declared narrower than the function
+actually required. Standing addition: read-only parameters take `Sequence`
+and `Mapping`, not `list` and `dict`.
+
 
 ### INC-012 — Verified the import contract by deliberately breaking it
 
@@ -1152,6 +1221,34 @@ folding it into recovery probability.
 result in the project so far, and presenting them without this row would be
 selective reporting. The honest claim is that uplift targeting solves the
 lost-cause problem and does not yet solve the sleeping-dog problem.
+
+**Closed in Phase 6, understood in Phase 10.** ADR-0018 was written expecting
+the cancellation cost to make the policy *avoid* sleeping dogs. It does not.
+Corrected figures show uplift_ev contacting 833 of them against risk
+ranking's 133 — six times as many.
+
+It causes a fifth of the cancellations anyway, because of *which channel it
+uses*. Of the 833 sleeping dogs it contacts, 833 receive a pre-debit
+notification and none receives a payment link:
+
+    uplift_ev   833 contacted, 100% pre_debit_nudge, 8 cancellations
+    risk_topN   133 contacted, 100% send_payment_link, 3 cancellations
+
+Nudge irritation is 0.08 against the link's 0.30, so the expected-value
+calculation prices a link to a contact-sensitive customer as negative while
+a nudge to the same customer stays positive.
+
+This is a better outcome than the one intended. Avoiding sleeping dogs
+forfeits the persuadable fraction of that population; routing them to the
+cheap channel keeps the upside and drops the harm. It also means the
+RBI-mandated notification is doing double duty — the message has to go out
+regardless, so reaching a contact-sensitive customer through it costs
+nothing incremental.
+
+**Recorded because the mechanism was not the predicted one.** The fix worked
+for a reason different from the one in ADR-0018, and that only became visible
+after INC-025 corrected the baseline. A finding that matches the hypothesis
+is worth less than one that survives being checked.
 
 ### INC-018 — Duplicate identifiers from an interrupted session
 
@@ -1393,3 +1490,74 @@ not finished when it produces the number. It is finished when the arithmetic
 behind the number has been checked independently of the code that produces it.
 Mutation testing is cheap for a module this small and is the only way to
 distinguish tests that pass from tests that would notice.
+
+### INC-025 — Risk ranking was inverted in the console and the Phase 6 script
+
+**Phase:** 10
+**Symptom:** The console's segment table reported risk ranking contacting
+**0% lost causes** and 14% sure things — directly contradicting the Phase 5
+finding that risk ranking spends over half its budget on lost causes.
+
+**Cause:** `rank_by_risk()` returns `1 - predict_baseline(x)`: target whoever
+is *least* likely to recover. Both the console snapshot and the Phase 6
+comparison script passed `predict_baseline(x)` directly, which inverts the
+ordering and targets whoever is *most* likely to recover.
+
+**Consequence, and it runs the wrong way.** The inverted baseline is a
+sure-thing picker, which contacts customers who were going to pay anyway.
+That makes it look ineffective in net terms, so the error **flattered our
+policy** — exactly the direction of mistake least likely to be questioned.
+Corrected, risk ranking nets Rs 55.3M rather than Rs 36.7M, and our advantage
+narrows from Rs 26.7M to Rs 8.1M.
+
+**Fix:** Both call sites now use `rank_by_risk`. The corrected segment split
+matches Phase 5: risk ranking spends 49% of its contact budget on lost
+causes against 17% for uplift targeting.
+
+**Changed as a result:** A baseline reimplemented at a second call site is a
+baseline that can silently drift from the one the reported numbers came from.
+`rank_by_risk` is now the single definition and is imported everywhere rather
+than reconstructed. More generally: when a comparison flatters the thing being
+argued for, that is the moment to re-derive the baseline rather than to move
+on — this was found by noticing that a number disagreed with an earlier phase,
+not by a test.
+
+### INC-026 — The console's snapshot builder broke the import contract
+
+**Phase:** 10
+**Found by:** `lint-imports`, on the first run after the console landed.
+
+**Symptom:**
+
+    Decision-making code cannot import the world BROKEN
+    recovery.api.snapshot -> recovery.world.generate
+    recovery.api.snapshot -> recovery.world.oracle.segments
+    recovery.api.snapshot -> recovery.evaluate.policy_eval
+                          -> recovery.world.oracle.segments
+
+**Cause:** the snapshot builder was written inside `recovery.api`. Building a
+snapshot means running a batch and classifying segments, both of which need
+the world — but `api` is on the forbidden-source list precisely so that no
+HTTP endpoint can reach a counterfactual. Putting the builder there gave the
+web layer a transitive path to the oracle.
+
+**Not a false positive.** The console serves JSON straight to a browser. An
+`api` module that can import `world.oracle` is one careless field away from
+publishing ground-truth outcomes to the client, which would make every
+evaluation claim in the project unverifiable — and it would look fine.
+
+**Fix:** moved the builder to `recovery.evaluate.snapshot`, where importing
+the world is legitimate, and introduced `recovery.paths` — a module importing
+nothing — to hold the snapshot location that both sides need. The API now
+imports nothing that can reach the world: it reads a file and serves it. The
+builder decides what is exposed; the API can only hand over what it finds.
+
+`recovery.cli` wires the two together, which is allowed because the CLI is not
+on the forbidden-source list.
+
+**Changed as a result:** the layering rule is now stated positively rather
+than as a prohibition — *the API serves a snapshot; it does not produce one*.
+Also worth recording that the contract earned its keep here for the second
+time (ADR-0011 was the first). Both times it caught something a reviewer
+would have had to trace by hand, and both times the violating code looked
+perfectly reasonable in isolation.

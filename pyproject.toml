@@ -63,6 +63,9 @@ plugins = ["pydantic.mypy"]
 module = ["lightgbm.*", "sklift.*", "razorpay.*", "sklearn.*", "scipy.*"]
 ignore_missing_imports = true
 
+[tool.setuptools.package-data]
+recovery = ["py.typed", "api/static/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
