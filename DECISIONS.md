@@ -596,6 +596,66 @@ was checked" needs the passes, not just the failure.
 
 ---
 
+# ADR-0027 — Off-policy estimators are validated against truth, not trusted
+
+**Date:** Phase 9
+**Status:** Accepted
+
+**Context.** In production the counterfactual is unobservable, so an
+off-policy estimator can never be checked: verifying it would require exactly
+the counterfactual you lack.
+
+**Decision.** IPS, SNIPS and doubly-robust estimators are implemented and
+scored against ground truth computed from the oracle. Errors are reported,
+not assumed.
+
+**Reasoning.** This is the argument for building a synthetic world rather than
+an apology for it. Simulation is the correct methodological choice here
+*because* it makes the check possible. No estimator sees the truth it is
+scored against — each receives logged actions, logged rewards and logged
+propensities only.
+
+**Result, and it is not the flattering one.** Measured on 40,000 cases:
+
+    target policy: always retry_scheduled
+                        full naive log      randomised holdout
+    effective sample    1,391 (3.5% of n)   1,331 (16.6% of n)
+    IPS                 +30.90%             -5.12%
+    SNIPS                +8.51%             -4.98%
+    doubly robust       +15.74%             -4.98%
+
+Doubly robust did **not** rescue the biased log. On the naive log the three
+estimators disagree by 22 percentage points and the best of them is off by
+8.5%; on the randomised holdout all three agree within 5%.
+
+**What this establishes:** off-policy accuracy here is governed by *overlap*,
+not by estimator sophistication. Reaching for a better estimator on a log with
+an effective sample of 3.5% is treating the symptom. The 20% uniformly
+randomised holdout designed into Phase 3 is what makes off-policy evaluation
+trustworthy at all, and effective sample size is now reported alongside every
+estimate so a lucky number on thin evidence cannot be mistaken for an
+accurate one.
+
+---
+
+## ADR-0028 — The sweep reports paired differences on identical worlds
+
+**Date:** Phase 9
+**Status:** Accepted
+
+**Decision.** Every policy in the robustness sweep is evaluated on the same
+generated world with the same seed, and the reported quantity is the paired
+difference rather than each policy's absolute net.
+
+**Reasoning.** Between-world variance is large — INC-016 cost several hours
+to that lesson — while the paired difference is far more stable, because the
+world's noise is faced by both policies and cancels. Comparing independent
+runs would need roughly an order of magnitude more configurations to support
+any claim, which at ~16 seconds per configuration is the difference between a
+sweep that runs and one that does not.
+
+---
+
 ## Incidents
 
 > Running log of things that broke, what the symptom was, what the cause
@@ -1254,3 +1314,82 @@ would have been reporting phantom failures.
   suite that has never touched the provider is testing our model of the
   provider, not the provider. Recording live fixtures (ADR-0021) is what
   converts a finding like this into permanent coverage.
+
+### INC-023 — The policy loses to doing nothing in a quarter of the assumption space
+
+**Phase:** 9
+**Status:** Open limitation, deliberately reported.
+
+**Finding:** Across 16 sampled configurations of the Tier-2 assumption grid:
+
+    uplift_ev vs risk_topN     16/16 (100%)  median +Rs 23.1M   worst  +Rs  7.7M
+    uplift_ev vs blind_retry   14/16  (88%)  median +Rs 10.9M   worst  -Rs  1.6M
+    uplift_ev vs do_nothing    12/16  (75%)  median +Rs  2.1M   worst  -Rs  7.2M
+
+The headline claim — that uplift targeting beats risk targeting — is robust:
+it holds in every configuration tested, with the worst case still a Rs 7.7M
+advantage. That claim survives.
+
+The weaker claim does not. In four of sixteen configurations the policy is
+worse than doing nothing at all, by up to Rs 7.2M.
+
+**Where it loses.** All four losing configurations have
+`salary_window_multiplier` at 0.45 or 0.70 combined with a long cancellation
+horizon (12 or 24 cycles). Reading the mechanism: a long horizon inflates the
+modelled cost of cancellation, which is what drives the policy's caution and
+its advantage over risk ranking — mean advantage rises from Rs 8.8M at a
+3-cycle horizon to Rs 36.9M at 24. But the same term makes the policy
+increasingly reluctant to contact anyone, and where the salary-window effect
+is weak the cases it declines were recoverable. It becomes conservative for
+the wrong reason.
+
+**Not fixed.** Two candidate directions, neither attempted here:
+- Calibrate the horizon rather than assuming it. Remaining mandate lifetime is
+  in principle estimable from tenure and cancellation history, and an
+  estimated horizon per case would be strictly better than one global constant
+  swept over a range.
+- Separate the cancellation *penalty* from the contact *threshold*, so that
+  raising the cost of a bad contact does not automatically raise the bar for
+  every contact.
+
+**Why recorded rather than tuned away.** The obvious response is to pick the
+horizon that wins everywhere and report that. The sweep exists to prevent
+exactly that: reporting a single configuration chosen after seeing the results
+would make every number in this project a selection artifact. The honest claim
+is narrower than the one we set out to make, and it is the one supported by
+the evidence: **uplift targeting reliably beats risk targeting; it does not
+reliably beat inaction across the full assumption space.**
+
+
+### INC-024 — The evaluation layer shipped without tests
+
+**Phase:** 9
+**Status:** Closed within the phase, before merge.
+
+**Symptom:** `ope.py` and `sweep.py` were written, run, and their results
+recorded in ADR-0027 and INC-023 — with no test coverage at all.
+
+**Why it mattered more than a normal coverage gap:** this is the module that
+validates every other number in the project. A wrong estimator would not
+raise; it would return a plausible figure, and the off-policy validation
+argument — the justification for building a synthetic world in the first
+place — would rest on arithmetic nobody had checked. The failure mode is a
+confident wrong answer, which is the one testing exists to prevent.
+
+**Fix:** 39 tests across both modules. Expected values for IPS, SNIPS,
+doubly-robust and effective sample size are computed by hand in the test
+docstrings rather than copied from the implementation, so the assertions
+check arithmetic rather than restate it.
+
+**Verified by mutation.** Passing on first run is weak evidence after INC-008,
+where a green check turned out not to have run at all. Two deliberate bugs
+were introduced and the suite confirmed to catch both:
+
+- SNIPS dividing by `n` instead of the realised weight mass — caught by 3 tests
+- disagreeing cases receiving weight 1 instead of 0 — caught by 4 tests
+
+**Changed as a result:** A new module whose output feeds a reported number is
+not finished when it produces the number. It is finished when the arithmetic
+behind the number has been checked independently of the code that produces it.
+Mutation testing is cheap for a module this small and is the only way to
+distinguish tests that pass from tests that would notice.
